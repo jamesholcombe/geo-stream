@@ -1,0 +1,14 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2021"
+description = "Pure batch geospatial stream engine"
+
+[dependencies]
+spatial = { path = "../spatial" }
+state = { path = "../state" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+geo = "0.28"

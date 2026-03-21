@@ -1,0 +1,25 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Local env / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors (optional — remove if your team commits shared settings)
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Debug / coverage
+*.profraw
+*.profdata
+coverage/
+lcov.info

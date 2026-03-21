@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/spatial",
+  "crates/state",
+  "crates/engine",
+  "crates/adapters/stdin-stdout",
+  "crates/adapters/http",
+  "crates/cli",
+]

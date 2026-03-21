@@ -1,0 +1,9 @@
+[package]
+name = "spatial"
+version = "0.1.0"
+edition = "2021"
+description = "Point-in-polygon and naive spatial index for geo-stream"
+
+[dependencies]
+geo = "0.28"
+thiserror = "2"
