@@ -2,6 +2,7 @@
 
 use geo::algorithm::contains::Contains;
 use geo::{LineString, Point, Polygon};
+use std::collections::BTreeSet;
 use thiserror::Error;
 
 /// A named geofence as a single polygon ring (holes not used in POC).
@@ -132,6 +133,43 @@ impl NaiveSpatialIndex {
             .filter(|z| z.contains_point(point.0, point.1))
             .collect()
     }
+
+    /// Clears `out` and inserts ids of geofences whose polygon contains `point`.
+    pub fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+        out.clear();
+        fill_polygon_zone_ids(&self.fences, point, out);
+    }
+
+    /// Clears `out` and inserts ids of corridors whose polygon contains `point`.
+    pub fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+        out.clear();
+        fill_polygon_zone_ids(&self.corridors, point, out);
+    }
+
+    /// Clears `out` and inserts ids of radius zones containing `point`.
+    pub fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+        out.clear();
+        for z in &self.radius_zones {
+            if z.contains_point(point.0, point.1) {
+                out.insert(z.id.clone());
+            }
+        }
+    }
+
+    /// Lexicographically smallest catalog region id among polygons containing `point`, if any.
+    pub fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String> {
+        let pt = Point::new(point.0, point.1);
+        let mut min_id: Option<&str> = None;
+        for f in &self.catalog {
+            if f.polygon.contains(&pt) {
+                let id = f.id.as_str();
+                if min_id.map_or(true, |m| id < m) {
+                    min_id = Some(id);
+                }
+            }
+        }
+        min_id.map(String::from)
+    }
 }
 
 impl SpatialIndex for NaiveSpatialIndex {
@@ -146,6 +184,15 @@ fn containing_polygons(fences: &[Geofence], point: (f64, f64)) -> Vec<&Geofence>
         .iter()
         .filter(|f| f.polygon.contains(&pt))
         .collect()
+}
+
+fn fill_polygon_zone_ids(zones: &[Geofence], point: (f64, f64), out: &mut BTreeSet<String>) {
+    let pt = Point::new(point.0, point.1);
+    for f in zones {
+        if f.polygon.contains(&pt) {
+            out.insert(f.id.clone());
+        }
+    }
 }
 
 /// When multiple catalog polygons contain the point, choose the lexicographically smallest id.
@@ -236,6 +283,25 @@ mod tests {
         };
         let refs = vec![&a, &b];
         assert_eq!(primary_catalog_region(&refs), Some("a".into()));
+    }
+
+    #[test]
+    fn primary_catalog_at_matches_region_refs() {
+        let mut idx = NaiveSpatialIndex::new();
+        idx
+            .try_push_catalog_region(Geofence {
+                id: "b".into(),
+                polygon: square(),
+            })
+            .unwrap();
+        idx
+            .try_push_catalog_region(Geofence {
+                id: "a".into(),
+                polygon: square(),
+            })
+            .unwrap();
+        assert_eq!(idx.primary_catalog_at((5.0, 5.0)), Some("a".into()));
+        assert_eq!(idx.primary_catalog_at((50.0, 5.0)), None);
     }
 
     #[test]

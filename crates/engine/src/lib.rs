@@ -1,6 +1,6 @@
 //! Pure, transport-agnostic geospatial stream engine: batch ingest, zone registration.
 
-use spatial::{primary_catalog_region, NaiveSpatialIndex};
+use spatial::NaiveSpatialIndex;
 use state::{
     assignment_transition, corridor_membership_transitions, membership_transitions,
     radius_membership_transitions, sort_events_deterministic,
@@ -39,6 +39,8 @@ pub enum EngineError {
 pub struct Engine {
     spatial: NaiveSpatialIndex,
     entities: HashMap<String, EntityState>,
+    /// Reused between membership tiers to avoid cloning [`EntityState`] sets each ingest.
+    membership_scratch: BTreeSet<String>,
 }
 
 impl Engine {
@@ -71,57 +73,51 @@ impl GeoEngine for Engine {
     fn ingest(&mut self, mut batch: Vec<PointUpdate>) -> Vec<Event> {
         batch.sort_by(|a, b| a.id.cmp(&b.id));
         let mut events = Vec::new();
-        let pt = |u: &PointUpdate| (u.x, u.y);
+
+        let spatial = &self.spatial;
+        let entities = &mut self.entities;
+        let membership_scratch = &mut self.membership_scratch;
 
         for update in batch {
-            let st = self.entities.entry(update.id.clone()).or_default();
-            let prev_inside = st.inside.clone();
-            let prev_corridor = st.inside_corridor.clone();
-            let prev_radius = st.inside_radius.clone();
-            let prev_catalog = st.catalog_region.clone();
+            let p = (update.x, update.y);
+            let st = entities.entry(update.id.clone()).or_default();
+            let entity_id = update.id.as_str();
 
-            let p = pt(&update);
-            let containing = self.spatial.containing_geofences(p);
-            let new_inside: BTreeSet<String> =
-                containing.into_iter().map(|g| g.id.clone()).collect();
-
-            let containing_co = self.spatial.containing_corridors(p);
-            let new_corridor: BTreeSet<String> =
-                containing_co.into_iter().map(|g| g.id.clone()).collect();
-
-            let containing_r = self.spatial.containing_radius_zones(p);
-            let new_radius: BTreeSet<String> =
-                containing_r.into_iter().map(|z| z.id.clone()).collect();
-
-            let cat_refs = self.spatial.containing_catalog_regions(p);
-            let new_catalog = primary_catalog_region(&cat_refs);
-
+            membership_scratch.clear();
+            spatial.geofence_membership_at(p, membership_scratch);
             events.extend(membership_transitions(
-                &update.id,
-                &prev_inside,
-                &new_inside,
+                entity_id,
+                &st.inside,
+                membership_scratch,
             ));
+            std::mem::swap(&mut st.inside, membership_scratch);
+
+            membership_scratch.clear();
+            spatial.corridor_membership_at(p, membership_scratch);
             events.extend(corridor_membership_transitions(
-                &update.id,
-                &prev_corridor,
-                &new_corridor,
+                entity_id,
+                &st.inside_corridor,
+                membership_scratch,
             ));
+            std::mem::swap(&mut st.inside_corridor, membership_scratch);
+
+            membership_scratch.clear();
+            spatial.radius_membership_at(p, membership_scratch);
             events.extend(radius_membership_transitions(
-                &update.id,
-                &prev_radius,
-                &new_radius,
+                entity_id,
+                &st.inside_radius,
+                membership_scratch,
             ));
+            std::mem::swap(&mut st.inside_radius, membership_scratch);
+
+            let new_catalog = spatial.primary_catalog_at(p);
             events.extend(assignment_transition(
-                &update.id,
-                &prev_catalog,
+                entity_id,
+                &st.catalog_region,
                 &new_catalog,
             ));
-
-            st.position = Some(p);
-            st.inside = new_inside;
-            st.inside_corridor = new_corridor;
-            st.inside_radius = new_radius;
             st.catalog_region = new_catalog;
+            st.position = Some(p);
         }
         sort_events_deterministic(&mut events);
         events
