@@ -1269,6 +1269,7 @@ name = "spatial"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "rstar 0.12.2",
  "thiserror",
 ]
 

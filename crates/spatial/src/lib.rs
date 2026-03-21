@@ -1,8 +1,11 @@
-//! Point-in-polygon checks, disk containment, and naive linear-scan indices.
+//! Point-in-polygon checks, disk containment, and R-tree–accelerated polygon indices.
 
+use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
 use geo::{LineString, Point, Polygon};
+use rstar::{AABB, RTree, RTreeObject};
 use std::collections::BTreeSet;
+use std::fmt;
 use thiserror::Error;
 
 /// A named geofence as a single polygon ring (holes not used in POC).
@@ -44,13 +47,121 @@ pub trait SpatialIndex {
     fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence>;
 }
 
-/// Linear scan over all zones — correct and simple; not for huge catalogs.
-#[derive(Debug, Default)]
+/// R-tree index on polygon bounding boxes with exact `contains` refinement; radius zones linear scan.
 pub struct NaiveSpatialIndex {
     fences: Vec<Geofence>,
+    fence_tree: RTree<IndexedPolygon>,
     corridors: Vec<Geofence>,
+    corridor_tree: RTree<IndexedPolygon>,
     catalog: Vec<Geofence>,
+    catalog_tree: RTree<IndexedPolygon>,
     radius_zones: Vec<RadiusZone>,
+}
+
+impl Default for NaiveSpatialIndex {
+    fn default() -> Self {
+        Self {
+            fences: Vec::new(),
+            fence_tree: RTree::new(),
+            corridors: Vec::new(),
+            corridor_tree: RTree::new(),
+            catalog: Vec::new(),
+            catalog_tree: RTree::new(),
+            radius_zones: Vec::new(),
+        }
+    }
+}
+
+impl fmt::Debug for NaiveSpatialIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NaiveSpatialIndex")
+            .field("fences", &self.fences.len())
+            .field("corridors", &self.corridors.len())
+            .field("catalog", &self.catalog.len())
+            .field("radius_zones", &self.radius_zones.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct IndexedPolygon {
+    index: usize,
+    envelope: AABB<[f64; 2]>,
+}
+
+impl RTreeObject for IndexedPolygon {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        self.envelope
+    }
+}
+
+fn polygon_aabb(polygon: &Polygon<f64>) -> Result<AABB<[f64; 2]>, SpatialError> {
+    let rect = polygon
+        .bounding_rect()
+        .ok_or(SpatialError::InvalidPolygon)?;
+    let min = rect.min();
+    let max = rect.max();
+    Ok(AABB::from_corners([min.x, min.y], [max.x, max.y]))
+}
+
+fn point_probe_envelope(point: (f64, f64)) -> AABB<[f64; 2]> {
+    AABB::from_point([point.0, point.1])
+}
+
+fn containing_polygons<'a>(
+    zones: &'a [Geofence],
+    tree: &RTree<IndexedPolygon>,
+    point: (f64, f64),
+) -> Vec<&'a Geofence> {
+    let pt = Point::new(point.0, point.1);
+    let probe = point_probe_envelope(point);
+    let mut out = Vec::new();
+    for obj in tree.locate_in_envelope_intersecting(&probe) {
+        let z = &zones[obj.index];
+        if z.polygon.contains(&pt) {
+            out.push(z);
+        }
+    }
+    out
+}
+
+fn fill_polygon_zone_ids(
+    zones: &[Geofence],
+    tree: &RTree<IndexedPolygon>,
+    point: (f64, f64),
+    out: &mut BTreeSet<String>,
+) {
+    out.clear();
+    let pt = Point::new(point.0, point.1);
+    let probe = point_probe_envelope(point);
+    for obj in tree.locate_in_envelope_intersecting(&probe) {
+        let z = &zones[obj.index];
+        if z.polygon.contains(&pt) {
+            out.insert(z.id.clone());
+        }
+    }
+}
+
+fn primary_catalog_at_indexed(
+    catalog: &[Geofence],
+    tree: &RTree<IndexedPolygon>,
+    point: (f64, f64),
+) -> Option<String> {
+    let pt = Point::new(point.0, point.1);
+    let probe = point_probe_envelope(point);
+    let mut min_id: Option<&str> = None;
+    for obj in tree.locate_in_envelope_intersecting(&probe) {
+        let f = &catalog[obj.index];
+        if f.polygon.contains(&pt) {
+            let id = f.id.as_str();
+            if min_id.map_or(true, |m| id < m) {
+                min_id = Some(id);
+            }
+        }
+    }
+    min_id.map(String::from)
 }
 
 impl NaiveSpatialIndex {
@@ -77,7 +188,10 @@ impl NaiveSpatialIndex {
         if self.id_exists(&fence.id) {
             return Err(SpatialError::DuplicateZoneId(fence.id.clone()));
         }
+        let env = polygon_aabb(&fence.polygon)?;
         self.fences.push(fence);
+        let index = self.fences.len() - 1;
+        self.fence_tree.insert(IndexedPolygon { index, envelope: env });
         Ok(())
     }
 
@@ -87,7 +201,10 @@ impl NaiveSpatialIndex {
         if self.id_exists(&corridor.id) {
             return Err(SpatialError::DuplicateZoneId(corridor.id.clone()));
         }
+        let env = polygon_aabb(&corridor.polygon)?;
         self.corridors.push(corridor);
+        let index = self.corridors.len() - 1;
+        self.corridor_tree.insert(IndexedPolygon { index, envelope: env });
         Ok(())
     }
 
@@ -97,7 +214,10 @@ impl NaiveSpatialIndex {
         if self.id_exists(&region.id) {
             return Err(SpatialError::DuplicateZoneId(region.id.clone()));
         }
+        let env = polygon_aabb(&region.polygon)?;
         self.catalog.push(region);
+        let index = self.catalog.len() - 1;
+        self.catalog_tree.insert(IndexedPolygon { index, envelope: env });
         Ok(())
     }
 
@@ -116,15 +236,15 @@ impl NaiveSpatialIndex {
     }
 
     pub fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.fences, point)
+        containing_polygons(&self.fences, &self.fence_tree, point)
     }
 
     pub fn containing_corridors(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.corridors, point)
+        containing_polygons(&self.corridors, &self.corridor_tree, point)
     }
 
     pub fn containing_catalog_regions(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.catalog, point)
+        containing_polygons(&self.catalog, &self.catalog_tree, point)
     }
 
     pub fn containing_radius_zones(&self, point: (f64, f64)) -> Vec<&RadiusZone> {
@@ -136,14 +256,12 @@ impl NaiveSpatialIndex {
 
     /// Clears `out` and inserts ids of geofences whose polygon contains `point`.
     pub fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
-        out.clear();
-        fill_polygon_zone_ids(&self.fences, point, out);
+        fill_polygon_zone_ids(&self.fences, &self.fence_tree, point, out);
     }
 
     /// Clears `out` and inserts ids of corridors whose polygon contains `point`.
     pub fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
-        out.clear();
-        fill_polygon_zone_ids(&self.corridors, point, out);
+        fill_polygon_zone_ids(&self.corridors, &self.corridor_tree, point, out);
     }
 
     /// Clears `out` and inserts ids of radius zones containing `point`.
@@ -158,40 +276,13 @@ impl NaiveSpatialIndex {
 
     /// Lexicographically smallest catalog region id among polygons containing `point`, if any.
     pub fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String> {
-        let pt = Point::new(point.0, point.1);
-        let mut min_id: Option<&str> = None;
-        for f in &self.catalog {
-            if f.polygon.contains(&pt) {
-                let id = f.id.as_str();
-                if min_id.map_or(true, |m| id < m) {
-                    min_id = Some(id);
-                }
-            }
-        }
-        min_id.map(String::from)
+        primary_catalog_at_indexed(&self.catalog, &self.catalog_tree, point)
     }
 }
 
 impl SpatialIndex for NaiveSpatialIndex {
     fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.fences, point)
-    }
-}
-
-fn containing_polygons(fences: &[Geofence], point: (f64, f64)) -> Vec<&Geofence> {
-    let pt = Point::new(point.0, point.1);
-    fences
-        .iter()
-        .filter(|f| f.polygon.contains(&pt))
-        .collect()
-}
-
-fn fill_polygon_zone_ids(zones: &[Geofence], point: (f64, f64), out: &mut BTreeSet<String>) {
-    let pt = Point::new(point.0, point.1);
-    for f in zones {
-        if f.polygon.contains(&pt) {
-            out.insert(f.id.clone());
-        }
+        containing_polygons(&self.fences, &self.fence_tree, point)
     }
 }
 
@@ -222,6 +313,37 @@ fn validate_polygon(polygon: &Polygon<f64>) -> Result<(), SpatialError> {
 }
 
 #[cfg(test)]
+impl NaiveSpatialIndex {
+    fn linear_geofence_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
+        let pt = Point::new(p.0, p.1);
+        self.fences
+            .iter()
+            .filter(|f| f.polygon.contains(&pt))
+            .map(|f| f.id.clone())
+            .collect()
+    }
+
+    fn linear_corridor_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
+        let pt = Point::new(p.0, p.1);
+        self.corridors
+            .iter()
+            .filter(|f| f.polygon.contains(&pt))
+            .map(|f| f.id.clone())
+            .collect()
+    }
+
+    fn linear_primary_catalog_at(&self, p: (f64, f64)) -> Option<String> {
+        let pt = Point::new(p.0, p.1);
+        self.catalog
+            .iter()
+            .filter(|f| f.polygon.contains(&pt))
+            .map(|f| f.id.as_str())
+            .min()
+            .map(String::from)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -233,6 +355,19 @@ mod tests {
                 (10.0, 10.0),
                 (0.0, 10.0),
                 (0.0, 0.0),
+            ]),
+            vec![],
+        )
+    }
+
+    fn unit_square_at(ox: f64, oy: f64) -> Polygon<f64> {
+        Polygon::new(
+            LineString::from(vec![
+                (ox, oy),
+                (ox + 1.0, oy),
+                (ox + 1.0, oy + 1.0),
+                (ox, oy + 1.0),
+                (ox, oy),
             ]),
             vec![],
         )
@@ -322,5 +457,77 @@ mod tests {
             })
             .unwrap_err();
         assert!(matches!(err, SpatialError::DuplicateZoneId(_)));
+    }
+
+    #[test]
+    fn rtree_geofence_membership_matches_linear_scan() {
+        let mut idx = NaiveSpatialIndex::new();
+        for i in 0..24 {
+            let ox = (i as f64) * 3.0;
+            let oy = (i as f64 % 5.0) * 2.0;
+            idx
+                .try_push(Geofence {
+                    id: format!("z{i}"),
+                    polygon: unit_square_at(ox, oy),
+                })
+                .unwrap();
+        }
+        let probes = [
+            (0.5, 0.5),
+            (1.5, 0.5),
+            (50.0, 50.0),
+            (0.0, 0.0),
+            (1.0, 1.0),
+            (3.5, 0.5),
+        ];
+        for p in probes {
+            let mut rt = BTreeSet::new();
+            idx.geofence_membership_at(p, &mut rt);
+            assert_eq!(rt, idx.linear_geofence_ids_at(p), "probe {p:?}");
+        }
+    }
+
+    #[test]
+    fn rtree_corridor_membership_matches_linear_scan() {
+        let mut idx = NaiveSpatialIndex::new();
+        for i in 0..16 {
+            idx
+                .try_push_corridor(Geofence {
+                    id: format!("c{i}"),
+                    polygon: unit_square_at(i as f64 * 2.0, 0.0),
+                })
+                .unwrap();
+        }
+        for p in [(0.5, 0.5), (2.5, 0.5), (100.0, 0.0)] {
+            let mut rt = BTreeSet::new();
+            idx.corridor_membership_at(p, &mut rt);
+            assert_eq!(rt, idx.linear_corridor_ids_at(p));
+        }
+    }
+
+    #[test]
+    fn rtree_primary_catalog_matches_linear_scan() {
+        let mut idx = NaiveSpatialIndex::new();
+        for i in 0..12 {
+            idx
+                .try_push_catalog_region(Geofence {
+                    id: format!("r{i:02}"),
+                    polygon: unit_square_at(0.0, i as f64 * 0.5),
+                })
+                .unwrap();
+        }
+        idx
+            .try_push_catalog_region(Geofence {
+                id: "r_overlap".into(),
+                polygon: unit_square_at(0.0, 0.0),
+            })
+            .unwrap();
+        for p in [(0.5, 0.5), (0.5, 2.0), (0.5, 100.0)] {
+            assert_eq!(
+                idx.primary_catalog_at(p),
+                idx.linear_primary_catalog_at(p),
+                "probe {p:?}"
+            );
+        }
     }
 }

@@ -89,7 +89,7 @@ Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor
 | Path | Role |
 |------|------|
 | `crates/engine` | `GeoEngine`, `Engine`, batch `ingest` |
-| `crates/spatial` | Point-in-polygon, `SpatialIndex`, naive index |
+| `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree (`NaiveSpatialIndex`) |
 | `crates/state` | `EntityState`, spatial events (geofence, corridor, radius, catalog) |
 | `crates/adapters/stdin-stdout` | NDJSON adapter |
 | `crates/adapters/http` | Optional HTTP (`server` feature) |

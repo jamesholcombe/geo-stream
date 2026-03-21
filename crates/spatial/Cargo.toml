@@ -2,8 +2,9 @@
 name = "spatial"
 version = "0.1.0"
 edition = "2021"
-description = "Point-in-polygon and naive spatial index for geo-stream"
+description = "Point-in-polygon and R-tree–accelerated spatial index for geo-stream"
 
 [dependencies]
 geo = "0.28"
+rstar = "0.12"
 thiserror = "2"

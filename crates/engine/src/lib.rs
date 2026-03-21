@@ -34,7 +34,7 @@ pub enum EngineError {
     Spatial(#[from] spatial::SpatialError),
 }
 
-/// In-memory engine: naive spatial index + per-entity membership state.
+/// In-memory engine: R-tree–accelerated polygon queries + per-entity membership state.
 #[derive(Debug, Default)]
 pub struct Engine {
     spatial: NaiveSpatialIndex,

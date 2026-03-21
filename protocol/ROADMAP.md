@@ -35,7 +35,7 @@ This separation (engine library + adapters) keeps **business logic** in one plac
 1. **Single-node POC (current):** correct enter/exit, naive linear scan over fences, NDJSON CLI.
 2. **Adapters:** stdin/stdout (done), HTTP sketch (`http-adapter` with `server` feature), later Kafka/File adapters **outside** the engine crate.
 3. **Performance pass:** fewer allocations per batch, reuse buffers, micro-optimizations on containment checks — **still no complex spatial index** until requirements demand it.
-4. **Spatial indexing:** R-tree or grid when fence count or QPS requires it; keep `SpatialIndex` trait so callers can swap implementations.
+4. **Spatial indexing:** Polygon layers (geofence, corridor, catalog) use an **rstar** R-tree on bounding boxes with **exact point-in-polygon** refinement; radius zones remain linear scan. The `SpatialIndex` trait remains for alternate implementations.
 5. **Distributed (future):** partition by entity id, deterministic merge of events, or embed engine shards behind a router — **out of scope** until single-node limits are understood.
 
 ## 6. Comparison vs existing approaches
@@ -53,7 +53,7 @@ This separation (engine library + adapters) keeps **business logic** in one plac
 ```text
 crates/
   engine/     — GeoEngine, Engine, PointUpdate
-  spatial/    — Geofence, point-in-polygon, NaiveSpatialIndex, SpatialIndex
+  spatial/    — Geofence, point-in-polygon, R-tree index (`NaiveSpatialIndex`), SpatialIndex
   state/      — EntityState, Event, membership diff + sort
   adapters/
     stdin-stdout/
