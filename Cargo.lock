@@ -231,6 +231,7 @@ dependencies = [
  "clap",
  "engine",
  "http-adapter",
+ "serde_json",
  "stdin-stdout",
  "tokio",
 ]
@@ -268,7 +269,6 @@ name = "engine"
 version = "0.1.0"
 dependencies = [
  "geo",
- "serde",
  "spatial",
  "state",
  "thiserror",
@@ -512,8 +512,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "engine",
- "geo",
- "geojson",
+ "polygon-json",
  "serde",
  "serde_json",
  "tokio",
@@ -713,6 +712,16 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
+name = "polygon-json"
+version = "0.1.0"
+dependencies = [
+ "geo",
+ "geojson",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "proc-macro2"
@@ -958,17 +967,13 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "state"
 version = "0.1.0"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "stdin-stdout"
 version = "0.1.0"
 dependencies = [
  "engine",
- "geo",
- "geojson",
+ "polygon-json",
  "serde",
  "serde_json",
  "thiserror",

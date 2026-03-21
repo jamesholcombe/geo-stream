@@ -1,6 +1,5 @@
 //! Per-entity geofence membership and deterministic enter/exit events.
 
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// Last known position and which geofence ids currently contain the entity.
@@ -11,8 +10,7 @@ pub struct EntityState {
 }
 
 /// Emitted when an entity crosses a geofence boundary between batches/updates.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "event", rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     Enter { id: String, geofence: String },
     Exit { id: String, geofence: String },

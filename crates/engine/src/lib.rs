@@ -1,6 +1,5 @@
 //! Pure, transport-agnostic geospatial stream engine: batch ingest, geofence registration.
 
-use serde::{Deserialize, Serialize};
 use spatial::{NaiveSpatialIndex, SpatialIndex};
 use state::{membership_transitions, sort_events_deterministic};
 use std::collections::{BTreeSet, HashMap};
@@ -10,7 +9,7 @@ pub use spatial::{Geofence, SpatialError};
 pub use state::{EntityState, Event};
 
 /// Single location observation for an entity.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PointUpdate {
     pub id: String,
     pub x: f64,

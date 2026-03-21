@@ -16,6 +16,10 @@ Clients must not mix error payloads on stdout if they parse events line-by-line.
 
 Any input line may include `"v": 1`. Future revisions may bump semantics; parsers should ignore unknown fields where possible.
 
+## Compatibility
+
+NDJSON v1 is the **stable, language-agnostic** contract for the CLI process: input line shapes, stdout event objects, and stderr error objects are part of that surface. Clients should tolerate **unknown fields** on input lines where possible. The optional `"v"` field is reserved for future semantic versioning of this stream. **Breaking changes** to these shapes would be introduced under a new documented version (for example a new `type` discriminator family or a successor document) or a new HTTP path revision (for example `/v3`) for the HTTP adapter—not silently in place.
+
 ## Input: register a geofence
 
 Registers a polygon before processing updates. `polygon` must be a GeoJSON **Polygon** geometry object (including `type` and `coordinates`).

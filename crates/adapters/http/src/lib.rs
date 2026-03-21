@@ -6,10 +6,9 @@ mod server_impl {
     use axum::http::StatusCode;
     use axum::routing::post;
     use axum::{Json, Router};
-    use engine::{Engine, Event, Geofence, GeoEngine, PointUpdate};
-    use geo::Polygon;
-    use geojson::Geometry;
-    use serde::Deserialize;
+    use engine::{Engine, Geofence, GeoEngine, PointUpdate};
+    use polygon_json::polygon_from_json_value;
+    use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
@@ -21,8 +20,15 @@ mod server_impl {
     }
 
     #[derive(Debug, Deserialize)]
+    struct PointUpdateJson {
+        id: String,
+        x: f64,
+        y: f64,
+    }
+
+    #[derive(Debug, Deserialize)]
     struct IngestBody {
-        updates: Vec<PointUpdate>,
+        updates: Vec<PointUpdateJson>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -31,25 +37,19 @@ mod server_impl {
         polygon: Value,
     }
 
-    fn polygon_from_value(v: Value) -> Result<Polygon<f64>, (StatusCode, String)> {
-        let geom: Geometry = serde_json::from_value(v).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("invalid GeoJSON geometry: {e}"),
-            )
-        })?;
-        let g: geo::Geometry<f64> = geom.try_into().map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "unsupported geometry (need Polygon)".into(),
-            )
-        })?;
-        match g {
-            geo::Geometry::Polygon(p) => Ok(p),
-            _ => Err((
-                StatusCode::BAD_REQUEST,
-                "geofence must be a Polygon".into(),
-            )),
+    #[derive(Debug, Serialize)]
+    #[serde(tag = "event", rename_all = "lowercase")]
+    enum EventJson {
+        Enter { id: String, geofence: String },
+        Exit { id: String, geofence: String },
+    }
+
+    impl From<engine::Event> for EventJson {
+        fn from(ev: engine::Event) -> Self {
+            match ev {
+                engine::Event::Enter { id, geofence } => EventJson::Enter { id, geofence },
+                engine::Event::Exit { id, geofence } => EventJson::Exit { id, geofence },
+            }
         }
     }
 
@@ -57,7 +57,12 @@ mod server_impl {
         State(state): State<AppState>,
         Json(body): Json<RegisterBody>,
     ) -> Result<StatusCode, (StatusCode, String)> {
-        let polygon = polygon_from_value(body.polygon)?;
+        let polygon = polygon_from_json_value(&body.polygon).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                e.to_string(),
+            )
+        })?;
         let mut eng = state
             .engine
             .lock()
@@ -74,12 +79,21 @@ mod server_impl {
     async fn ingest_handler(
         State(state): State<AppState>,
         Json(body): Json<IngestBody>,
-    ) -> Result<Json<Vec<Event>>, (StatusCode, String)> {
+    ) -> Result<Json<Vec<EventJson>>, (StatusCode, String)> {
         let mut eng = state
             .engine
             .lock()
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let events = eng.ingest(body.updates);
+        let updates: Vec<PointUpdate> = body
+            .updates
+            .into_iter()
+            .map(|u| PointUpdate {
+                id: u.id,
+                x: u.x,
+                y: u.y,
+            })
+            .collect();
+        let events: Vec<EventJson> = eng.ingest(updates).into_iter().map(Into::into).collect();
         Ok(Json(events))
     }
 

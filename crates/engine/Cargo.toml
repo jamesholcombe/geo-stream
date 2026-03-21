@@ -7,7 +7,6 @@ description = "Pure batch geospatial stream engine"
 [dependencies]
 spatial = { path = "../spatial" }
 state = { path = "../state" }
-serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 
 [dev-dependencies]

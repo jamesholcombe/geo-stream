@@ -1,8 +1,7 @@
-//! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`engine::Engine`].
+//! Newline-delimited JSON over stdin/stdout; parses protocol v1 lines and drives [`GeoEngine`].
 
-use engine::{Engine, EngineError, Geofence, GeoEngine, PointUpdate};
-use geo::Polygon;
-use geojson::Geometry;
+use engine::{EngineError, Geofence, GeoEngine, PointUpdate};
+use polygon_json::polygon_from_json_value;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, BufRead, Write};
@@ -51,13 +50,29 @@ enum InputLine {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "event", rename_all = "lowercase")]
+enum NdjsonEvent {
+    Enter { id: String, geofence: String },
+    Exit { id: String, geofence: String },
+}
+
+impl From<engine::Event> for NdjsonEvent {
+    fn from(ev: engine::Event) -> Self {
+        match ev {
+            engine::Event::Enter { id, geofence } => NdjsonEvent::Enter { id, geofence },
+            engine::Event::Exit { id, geofence } => NdjsonEvent::Exit { id, geofence },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 struct ErrorLine {
     error: String,
 }
 
 /// Read NDJSON from `reader`, write events to `out`, errors to `err`.
-pub fn run<R, O, E>(
-    engine: &mut Engine,
+pub fn run<R, O, E, G>(
+    engine: &mut G,
     reader: R,
     mut out: O,
     mut err: E,
@@ -67,6 +82,7 @@ where
     R: BufRead,
     O: Write,
     E: Write,
+    G: GeoEngine,
 {
     let mut pending: Vec<PointUpdate> = Vec::new();
     let mut line_no: u64 = 0;
@@ -87,7 +103,7 @@ where
 
         match parsed {
             InputLine::RegisterGeofence { id, polygon, .. } => {
-                let poly = match polygon_from_json_value(polygon) {
+                let poly = match polygon_from_json_value(&polygon) {
                     Ok(p) => p,
                     Err(e) => {
                         writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
@@ -119,15 +135,16 @@ where
     Ok(())
 }
 
-fn flush_batch<O: Write>(
-    engine: &mut Engine,
+fn flush_batch<O: Write, G: GeoEngine>(
+    engine: &mut G,
     pending: &mut Vec<PointUpdate>,
     out: &mut O,
 ) -> Result<(), StdioAdapterError> {
     let batch = std::mem::take(pending);
     let events = engine.ingest(batch);
     for ev in events {
-        writeln!(out, "{}", serde_json::to_string(&ev)?)?;
+        let line: NdjsonEvent = ev.into();
+        writeln!(out, "{}", serde_json::to_string(&line)?)?;
     }
     out.flush()?;
     Ok(())
@@ -141,22 +158,10 @@ fn writeln_err<E: Write>(err: &mut E, msg: &str) -> io::Result<()> {
     writeln!(err, "{line}")
 }
 
-fn polygon_from_json_value(v: Value) -> Result<Polygon<f64>, StdioAdapterError> {
-    let geom: Geometry = serde_json::from_value(v).map_err(|e| StdioAdapterError::Geometry(e.to_string()))?;
-    let g: geo::Geometry<f64> = geom
-        .try_into()
-        .map_err(|_| StdioAdapterError::Geometry("unsupported geometry for geofence".into()))?;
-    match g {
-        geo::Geometry::Polygon(p) => Ok(p),
-        _ => Err(StdioAdapterError::Geometry(
-            "geofence polygon must be a GeoJSON Polygon".into(),
-        )),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::Engine;
     use std::io::Cursor;
 
     fn fence_line() -> String {
