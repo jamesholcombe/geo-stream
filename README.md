@@ -16,6 +16,8 @@ cargo build
 cargo test
 ```
 
+`cargo test -p cli` also runs NDJSON integration tests (v1 smoke + v1.1 fixtures under `crates/cli/tests/fixtures/`).
+
 Release build (matches what the Dockerfile compiles):
 
 ```bash
@@ -69,8 +71,12 @@ Build the Axum-based binary (same engine, JSON over HTTP):
 
 ```bash
 cargo build -p cli --features http --bin geo-stream-http
-./target/debug/geo-stream-http
+./target/debug/geo-stream-http --listen 0.0.0.0:8080
 ```
+
+- **`--listen`:** bind address (default `0.0.0.0:8080`).
+- **`GET /health`:** returns `{"status":"ok"}` (use for load balancers; readiness matches health for this single-process MVP).
+- **`RUST_LOG`:** set e.g. `RUST_LOG=info` for HTTP request tracing (requires `tracing-subscriber` init in the binary).
 
 Endpoints (v2 sketch): `POST /v2/register_geofence`, `POST /v2/register_corridor`, `POST /v2/register_catalog_region`, `POST /v2/register_radius`, `POST /v2/ingest` with body `{"updates":[...]}` (see [protocol/ndjson-v1.1.md](protocol/ndjson-v1.1.md) and `crates/adapters/http`).
 
