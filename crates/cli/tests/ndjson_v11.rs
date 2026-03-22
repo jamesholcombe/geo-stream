@@ -21,6 +21,7 @@ fn catalog_overlap_picks_lexicographically_smallest_region() {
     assert_eq!(v["event"], "assignment_changed");
     assert_eq!(v["id"], "e1");
     assert_eq!(v["region"], "a-region");
+    assert_eq!(v["t"], 1700000000000u64);
 }
 
 #[test]

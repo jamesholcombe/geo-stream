@@ -203,10 +203,10 @@ These differ from the target model above; adapters and tests should match **what
 
 - Trait `GeoEngine`: zone registration + **`process_event(&mut self, PointUpdate) -> Vec<Event>`**.
 - **`Engine`**: `process_batch` (sorted multi-update + global event order), **`with_rules`**, default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
-- Input update: `PointUpdate { id, x, y }` (no timestamp in the core type).
+- Input update: `PointUpdate { id, x, y, t_ms }` (Unix epoch milliseconds). Wire JSON field `t` in adapters.
 - Concrete type: `Engine` backed by `spatial::NaiveSpatialIndex` and `HashMap<String, EntityState>`.
 
-**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
+**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog); each variant includes **`t_ms`** (same as the causing `PointUpdate`). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
 
 **Per-entity state** (`crates/state`): `EntityState` holds `position: Option<(f64, f64)>`, membership sets (`inside`, `inside_corridor`, `inside_radius` as `BTreeSet<String>`), and `catalog_region: Option<String>`.
 
@@ -233,14 +233,14 @@ The project currently:
 - **Adapters:** stdin-stdout and HTTP call **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
 - **Protocol:** NDJSON v1 and v1.1 docs under `protocol/`.
 
-**Known gap:** Timestamps on `PointUpdate`, richer protocol/schema, optional non-`Engine` adapter generics if needed.
+**Known gap:** Richer protocol/schema (e.g. JSON Schema), optional non-`Engine` adapter generics if needed.
 
 ---
 
 ## Immediate goals (V1 direction)
 
 1. **Done (baseline):** `process_event` + `SpatialRule` pipeline + `Engine::process_batch` for multi-update ordering.
-2. Optional: timestamps, custom rule sets per deployment, adapter ergonomics.
+2. Optional: custom rule sets per deployment, adapter ergonomics, JSON Schema for protocol.
 3. Explicit state transitions: keep `state` helpers pure where possible.
 4. Batch remains a thin wrapper (`process_batch`), not the core abstraction.
 

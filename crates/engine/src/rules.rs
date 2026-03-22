@@ -7,13 +7,19 @@ use state::{
 };
 use std::collections::BTreeSet;
 
+/// Per-update inputs shared across [`SpatialRule::apply`].
+pub struct RuleContext<'a> {
+    pub entity_id: &'a str,
+    pub position: (f64, f64),
+    pub at_ms: u64,
+}
+
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
 pub trait SpatialRule: Send + Sync {
     fn apply(
         &self,
         spatial: &NaiveSpatialIndex,
-        entity_id: &str,
-        position: (f64, f64),
+        ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
         out: &mut Vec<Event>,
@@ -28,15 +34,19 @@ impl SpatialRule for GeofenceRule {
     fn apply(
         &self,
         spatial: &NaiveSpatialIndex,
-        entity_id: &str,
-        position: (f64, f64),
+        ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
         out: &mut Vec<Event>,
     ) {
         scratch.clear();
-        spatial.geofence_membership_at(position, scratch);
-        out.extend(membership_transitions(entity_id, &state.inside, scratch));
+        spatial.geofence_membership_at(ctx.position, scratch);
+        out.extend(membership_transitions(
+            ctx.entity_id,
+            &state.inside,
+            scratch,
+            ctx.at_ms,
+        ));
         std::mem::swap(&mut state.inside, scratch);
     }
 }
@@ -49,18 +59,18 @@ impl SpatialRule for CorridorRule {
     fn apply(
         &self,
         spatial: &NaiveSpatialIndex,
-        entity_id: &str,
-        position: (f64, f64),
+        ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
         out: &mut Vec<Event>,
     ) {
         scratch.clear();
-        spatial.corridor_membership_at(position, scratch);
+        spatial.corridor_membership_at(ctx.position, scratch);
         out.extend(corridor_membership_transitions(
-            entity_id,
+            ctx.entity_id,
             &state.inside_corridor,
             scratch,
+            ctx.at_ms,
         ));
         std::mem::swap(&mut state.inside_corridor, scratch);
     }
@@ -74,18 +84,18 @@ impl SpatialRule for RadiusRule {
     fn apply(
         &self,
         spatial: &NaiveSpatialIndex,
-        entity_id: &str,
-        position: (f64, f64),
+        ctx: &RuleContext<'_>,
         state: &mut EntityState,
         scratch: &mut BTreeSet<String>,
         out: &mut Vec<Event>,
     ) {
         scratch.clear();
-        spatial.radius_membership_at(position, scratch);
+        spatial.radius_membership_at(ctx.position, scratch);
         out.extend(radius_membership_transitions(
-            entity_id,
+            ctx.entity_id,
             &state.inside_radius,
             scratch,
+            ctx.at_ms,
         ));
         std::mem::swap(&mut state.inside_radius, scratch);
     }
@@ -99,17 +109,17 @@ impl SpatialRule for CatalogRule {
     fn apply(
         &self,
         spatial: &NaiveSpatialIndex,
-        entity_id: &str,
-        position: (f64, f64),
+        ctx: &RuleContext<'_>,
         state: &mut EntityState,
         _scratch: &mut BTreeSet<String>,
         out: &mut Vec<Event>,
     ) {
-        let new_catalog = spatial.primary_catalog_at(position);
+        let new_catalog = spatial.primary_catalog_at(ctx.position);
         out.extend(assignment_transition(
-            entity_id,
+            ctx.entity_id,
             &state.catalog_region,
             &new_catalog,
+            ctx.at_ms,
         ));
         state.catalog_region = new_catalog;
     }

@@ -41,32 +41,35 @@ Same **Polygon** geometry. Semantics: at most one **primary** catalog assignment
 Corridor:
 
 ```json
-{"event":"enter_corridor","id":"c1","corridor":"corridor-main"}
-{"event":"exit_corridor","id":"c1","corridor":"corridor-main"}
+{"event":"enter_corridor","id":"c1","corridor":"corridor-main","t":0}
+{"event":"exit_corridor","id":"c1","corridor":"corridor-main","t":0}
 ```
 
 Radius:
 
 ```json
-{"event":"approach","id":"c1","zone":"anchor-1"}
-{"event":"recede","id":"c1","zone":"anchor-1"}
+{"event":"approach","id":"c1","zone":"anchor-1","t":0}
+{"event":"recede","id":"c1","zone":"anchor-1","t":0}
 ```
 
 Catalog assignment (`region` is `null` when not inside any catalog polygon):
 
 ```json
-{"event":"assignment_changed","id":"c1","region":"ward-north"}
-{"event":"assignment_changed","id":"c1","region":null}
+{"event":"assignment_changed","id":"c1","region":"ward-north","t":0}
+{"event":"assignment_changed","id":"c1","region":null,"t":0}
 ```
 
 ## Event ordering (determinism)
 
-Within one `process_batch` call, updates are still processed in **ascending entity `id`**. For each update, emitted events are sorted stably by:
+Within one `process_batch` call, updates are first ordered by **ascending entity `id`**, then by **ascending `t`** (milliseconds) when the same entity appears more than once. Emitted events are sorted stably by:
 
 1. Entity `id`
-2. Category: **geofence** (`enter` / `exit`), then **corridor**, then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
-3. Within a category, by zone / geofence / corridor / radius id (lexicographic)
-4. For geofence, corridor, and radius: **enter-type** (or `approach`) before **exit-type** (or `recede`)
+2. Observation time **`t`** (milliseconds)
+3. Category: **geofence** (`enter` / `exit`), then **corridor**, then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
+4. Within a category, by zone / geofence / corridor / radius id (lexicographic)
+5. For geofence, corridor, and radius: **enter-type** (or `approach`) before **exit-type** (or `recede`)
+
+Every stdout event object includes **`t`** (same semantics as v1).
 
 ## HTTP v2
 

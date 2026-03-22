@@ -9,7 +9,7 @@ use std::fmt;
 use thiserror::Error;
 
 pub use rules::{
-    default_rules, CatalogRule, CorridorRule, GeofenceRule, RadiusRule, SpatialRule,
+    default_rules, CatalogRule, CorridorRule, GeofenceRule, RadiusRule, RuleContext, SpatialRule,
 };
 
 pub use spatial::{Geofence, RadiusZone, SpatialError};
@@ -21,6 +21,8 @@ pub struct PointUpdate {
     pub id: String,
     pub x: f64,
     pub y: f64,
+    /// Unix epoch time in milliseconds (observation time for this sample).
+    pub t_ms: u64,
 }
 
 /// Engine API: zone registration and single-update processing.
@@ -86,7 +88,7 @@ impl Engine {
 
     /// Sort updates by entity id, run `GeoEngine::process_event` for each, then `state::sort_events_deterministic` on the combined output.
     pub fn process_batch(&mut self, mut batch: Vec<PointUpdate>) -> Vec<Event> {
-        batch.sort_by(|a, b| a.id.cmp(&b.id));
+        batch.sort_by(|a, b| a.id.cmp(&b.id).then_with(|| a.t_ms.cmp(&b.t_ms)));
         let mut events = Vec::new();
         for u in batch {
             events.extend(self.process_event(u));
@@ -124,10 +126,17 @@ impl GeoEngine for Engine {
         let entity_id = update.id.as_str();
         let spatial = &self.spatial;
         let scratch = &mut self.membership_scratch;
+        let t_ms = update.t_ms;
+        let ctx = rules::RuleContext {
+            entity_id,
+            position: p,
+            at_ms: t_ms,
+        };
         for rule in &self.rules {
-            rule.apply(spatial, entity_id, p, st, scratch, &mut events);
+            rule.apply(spatial, &ctx, st, scratch, &mut events);
         }
         st.position = Some(p);
+        st.last_t_ms = Some(t_ms);
         events
     }
 }
@@ -164,22 +173,24 @@ mod tests {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
+            t_ms: 100,
         });
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Enter { id, geofence } if id == "c1" && geofence == "zone-1"
+            Event::Enter { id, geofence, t_ms: 100 } if id == "c1" && geofence == "zone-1"
         ));
 
         let ev2 = e.process_event(PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
+            t_ms: 200,
         });
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Exit { id, geofence } if id == "c1" && geofence == "zone-1"
+            Event::Exit { id, geofence, t_ms: 200 } if id == "c1" && geofence == "zone-1"
         ));
     }
 
@@ -196,22 +207,24 @@ mod tests {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
+            t_ms: 0,
         }]);
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Enter { id, geofence } if id == "c1" && geofence == "zone-1"
+            Event::Enter { id, geofence, .. } if id == "c1" && geofence == "zone-1"
         ));
 
         let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
+            t_ms: 0,
         }]);
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Exit { id, geofence } if id == "c1" && geofence == "zone-1"
+            Event::Exit { id, geofence, .. } if id == "c1" && geofence == "zone-1"
         ));
     }
 
@@ -228,11 +241,13 @@ mod tests {
                 id: "b".into(),
                 x: 0.5,
                 y: 0.5,
+                t_ms: 0,
             },
             PointUpdate {
                 id: "a".into(),
                 x: 0.5,
                 y: 0.5,
+                t_ms: 0,
             },
         ];
         let ev = e.process_batch(batch);
@@ -259,22 +274,24 @@ mod tests {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
+            t_ms: 0,
         }]);
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::AssignmentChanged { id, region: Some(r) } if id == "c1" && r == "region-a"
+            Event::AssignmentChanged { id, region: Some(r), .. } if id == "c1" && r == "region-a"
         ));
 
         let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
+            t_ms: 0,
         }]);
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::AssignmentChanged { id, region: None } if id == "c1"
+            Event::AssignmentChanged { id, region: None, .. } if id == "c1"
         ));
     }
 
@@ -293,22 +310,24 @@ mod tests {
             id: "c1".into(),
             x: 1.0,
             y: 0.0,
+            t_ms: 0,
         }]);
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Approach { id, zone } if id == "c1" && zone == "rad-1"
+            Event::Approach { id, zone, .. } if id == "c1" && zone == "rad-1"
         ));
 
         let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 10.0,
             y: 0.0,
+            t_ms: 0,
         }]);
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Recede { id, zone } if id == "c1" && zone == "rad-1"
+            Event::Recede { id, zone, .. } if id == "c1" && zone == "rad-1"
         ));
     }
 
@@ -325,22 +344,24 @@ mod tests {
             id: "c1".into(),
             x: 0.5,
             y: 0.5,
+            t_ms: 0,
         }]);
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::EnterCorridor { id, corridor } if id == "c1" && corridor == "cor-1"
+            Event::EnterCorridor { id, corridor, .. } if id == "c1" && corridor == "cor-1"
         ));
 
         let ev2 = e.process_batch(vec![PointUpdate {
             id: "c1".into(),
             x: 5.0,
             y: 5.0,
+            t_ms: 0,
         }]);
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::ExitCorridor { id, corridor } if id == "c1" && corridor == "cor-1"
+            Event::ExitCorridor { id, corridor, .. } if id == "c1" && corridor == "cor-1"
         ));
     }
 }

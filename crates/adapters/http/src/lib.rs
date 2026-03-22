@@ -119,6 +119,9 @@ mod server_impl {
         id: String,
         x: f64,
         y: f64,
+        /// Unix epoch milliseconds. Omitted → `0`.
+        #[serde(default, rename = "t")]
+        t_ms: u64,
     }
 
     #[derive(Debug, Deserialize, ToSchema)]
@@ -152,49 +155,96 @@ mod server_impl {
         Enter {
             id: String,
             geofence: String,
+            t: u64,
         },
         Exit {
             id: String,
             geofence: String,
+            t: u64,
         },
         EnterCorridor {
             id: String,
             corridor: String,
+            t: u64,
         },
         ExitCorridor {
             id: String,
             corridor: String,
+            t: u64,
         },
         Approach {
             id: String,
             zone: String,
+            t: u64,
         },
         Recede {
             id: String,
             zone: String,
+            t: u64,
         },
         AssignmentChanged {
             id: String,
             #[serde(skip_serializing_if = "Option::is_none")]
             region: Option<String>,
+            t: u64,
         },
     }
 
     impl From<engine::Event> for EventJson {
         fn from(ev: engine::Event) -> Self {
             match ev {
-                engine::Event::Enter { id, geofence } => EventJson::Enter { id, geofence },
-                engine::Event::Exit { id, geofence } => EventJson::Exit { id, geofence },
-                engine::Event::EnterCorridor { id, corridor } => {
-                    EventJson::EnterCorridor { id, corridor }
-                }
-                engine::Event::ExitCorridor { id, corridor } => {
-                    EventJson::ExitCorridor { id, corridor }
-                }
-                engine::Event::Approach { id, zone } => EventJson::Approach { id, zone },
-                engine::Event::Recede { id, zone } => EventJson::Recede { id, zone },
-                engine::Event::AssignmentChanged { id, region } => {
-                    EventJson::AssignmentChanged { id, region }
+                engine::Event::Enter {
+                    id,
+                    geofence,
+                    t_ms,
+                } => EventJson::Enter {
+                    id,
+                    geofence,
+                    t: t_ms,
+                },
+                engine::Event::Exit {
+                    id,
+                    geofence,
+                    t_ms,
+                } => EventJson::Exit {
+                    id,
+                    geofence,
+                    t: t_ms,
+                },
+                engine::Event::EnterCorridor {
+                    id,
+                    corridor,
+                    t_ms,
+                } => EventJson::EnterCorridor {
+                    id,
+                    corridor,
+                    t: t_ms,
+                },
+                engine::Event::ExitCorridor {
+                    id,
+                    corridor,
+                    t_ms,
+                } => EventJson::ExitCorridor {
+                    id,
+                    corridor,
+                    t: t_ms,
+                },
+                engine::Event::Approach { id, zone, t_ms } => EventJson::Approach {
+                    id,
+                    zone,
+                    t: t_ms,
+                },
+                engine::Event::Recede { id, zone, t_ms } => EventJson::Recede {
+                    id,
+                    zone,
+                    t: t_ms,
+                },
+                engine::Event::AssignmentChanged { id, region, t_ms } => {
+                    EventJson::AssignmentChanged {
+                        id,
+                        region,
+                        t: t_ms,
+                    }
                 }
             }
         }
@@ -387,6 +437,7 @@ mod server_impl {
                 id: u.id,
                 x: u.x,
                 y: u.y,
+                t_ms: u.t_ms,
             })
             .collect();
         let events: Vec<EventJson> = eng

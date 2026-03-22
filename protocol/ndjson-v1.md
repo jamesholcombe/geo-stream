@@ -35,23 +35,29 @@ Registration is applied **immediately** when the line is read (before subsequent
 ## Input: point update
 
 ```json
-{"type":"update","id":"c1","location":[0.5,0.5]}
+{"type":"update","id":"c1","location":[0.5,0.5],"t":1700000000000}
 ```
 
 `location` is `[x, y]` in the same coordinate system as geofence rings (typically WGS-84 longitude/latitude or a projected CRS — the engine does not reproject).
+
+Optional **`t`**: Unix epoch time in **milliseconds** for this observation. If omitted, it defaults to **`0`**. The engine sorts batched updates with the same `id` by `t` ascending before processing.
+
+## Timestamps on stdout events
+
+Every emitted event includes **`t`**: the same millisecond value as the `update` line that produced it (the observation time for that transition).
 
 ## Output: events
 
 Enter:
 
 ```json
-{"event":"enter","id":"c1","geofence":"zone-1"}
+{"event":"enter","id":"c1","geofence":"zone-1","t":1700000000000}
 ```
 
 Exit:
 
 ```json
-{"event":"exit","id":"c1","geofence":"zone-1"}
+{"event":"exit","id":"c1","geofence":"zone-1","t":1700000000001}
 ```
 
 ## Output: errors (stderr)

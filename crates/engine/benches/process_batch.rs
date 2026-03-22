@@ -45,6 +45,7 @@ fn process_batch_steady_one_entity(c: &mut Criterion) {
                 id: "entity-1".into(),
                 x: 0.5,
                 y: 0.5,
+                t_ms: 0,
             }];
             engine.process_batch(batch.clone());
             b.iter(|| {
@@ -73,6 +74,7 @@ fn process_batch_steady_many_entities(c: &mut Criterion) {
                         id: format!("e-{i}"),
                         x: 0.5,
                         y: 0.5,
+                        t_ms: 0,
                     })
                     .collect();
                 engine.process_batch(batch.clone());
@@ -129,6 +131,7 @@ fn process_batch_mixed_zones_steady(c: &mut Criterion) {
             id: "entity-1".into(),
             x: 0.5,
             y: 0.5,
+            t_ms: 0,
         }];
         engine.process_batch(batch.clone());
 

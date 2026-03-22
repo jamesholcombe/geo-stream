@@ -37,6 +37,9 @@ enum InputLine {
     Update {
         id: String,
         location: [f64; 2],
+        /// Unix epoch milliseconds for this observation. Omitted or null → `0`.
+        #[serde(default, rename = "t")]
+        t_ms: u64,
         /// Protocol version (optional); reserved for forward compatibility.
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
@@ -71,30 +74,98 @@ enum InputLine {
 #[derive(Debug, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 enum NdjsonEvent {
-    Enter { id: String, geofence: String },
-    Exit { id: String, geofence: String },
-    EnterCorridor { id: String, corridor: String },
-    ExitCorridor { id: String, corridor: String },
-    Approach { id: String, zone: String },
-    Recede { id: String, zone: String },
-    AssignmentChanged { id: String, region: Option<String> },
+    Enter {
+        id: String,
+        geofence: String,
+        t: u64,
+    },
+    Exit {
+        id: String,
+        geofence: String,
+        t: u64,
+    },
+    EnterCorridor {
+        id: String,
+        corridor: String,
+        t: u64,
+    },
+    ExitCorridor {
+        id: String,
+        corridor: String,
+        t: u64,
+    },
+    Approach {
+        id: String,
+        zone: String,
+        t: u64,
+    },
+    Recede {
+        id: String,
+        zone: String,
+        t: u64,
+    },
+    AssignmentChanged {
+        id: String,
+        region: Option<String>,
+        t: u64,
+    },
 }
 
 impl From<engine::Event> for NdjsonEvent {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter { id, geofence } => NdjsonEvent::Enter { id, geofence },
-            engine::Event::Exit { id, geofence } => NdjsonEvent::Exit { id, geofence },
-            engine::Event::EnterCorridor { id, corridor } => {
-                NdjsonEvent::EnterCorridor { id, corridor }
-            }
-            engine::Event::ExitCorridor { id, corridor } => {
-                NdjsonEvent::ExitCorridor { id, corridor }
-            }
-            engine::Event::Approach { id, zone } => NdjsonEvent::Approach { id, zone },
-            engine::Event::Recede { id, zone } => NdjsonEvent::Recede { id, zone },
-            engine::Event::AssignmentChanged { id, region } => {
-                NdjsonEvent::AssignmentChanged { id, region }
+            engine::Event::Enter {
+                id,
+                geofence,
+                t_ms,
+            } => NdjsonEvent::Enter {
+                id,
+                geofence,
+                t: t_ms,
+            },
+            engine::Event::Exit {
+                id,
+                geofence,
+                t_ms,
+            } => NdjsonEvent::Exit {
+                id,
+                geofence,
+                t: t_ms,
+            },
+            engine::Event::EnterCorridor {
+                id,
+                corridor,
+                t_ms,
+            } => NdjsonEvent::EnterCorridor {
+                id,
+                corridor,
+                t: t_ms,
+            },
+            engine::Event::ExitCorridor {
+                id,
+                corridor,
+                t_ms,
+            } => NdjsonEvent::ExitCorridor {
+                id,
+                corridor,
+                t: t_ms,
+            },
+            engine::Event::Approach { id, zone, t_ms } => NdjsonEvent::Approach {
+                id,
+                zone,
+                t: t_ms,
+            },
+            engine::Event::Recede { id, zone, t_ms } => NdjsonEvent::Recede {
+                id,
+                zone,
+                t: t_ms,
+            },
+            engine::Event::AssignmentChanged { id, region, t_ms } => {
+                NdjsonEvent::AssignmentChanged {
+                    id,
+                    region,
+                    t: t_ms,
+                }
             }
         }
     }
@@ -184,11 +255,17 @@ where
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }
-            InputLine::Update { id, location, .. } => {
+            InputLine::Update {
+                id,
+                location,
+                t_ms,
+                ..
+            } => {
                 pending.push(PointUpdate {
                     id,
                     x: location[0],
                     y: location[1],
+                    t_ms,
                 });
                 let should_flush = config.batch_size > 0 && pending.len() >= config.batch_size;
                 if should_flush {
