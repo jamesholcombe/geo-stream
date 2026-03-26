@@ -79,6 +79,9 @@ mod server_impl {
                     HttpError::conflict(e.to_string())
                 }
                 EngineError::Spatial(_) => HttpError::invalid_input(e.to_string()),
+                EngineError::MonotonicityViolation { .. } => {
+                    HttpError::invalid_input(e.to_string())
+                }
             }
         }
     }
@@ -440,11 +443,9 @@ mod server_impl {
                 t_ms: u.t_ms,
             })
             .collect();
-        let events: Vec<EventJson> = eng
-            .process_batch(updates)
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        // Monotonicity violations are skipped; valid events are still returned.
+        let (batch_events, _errors) = eng.process_batch(updates);
+        let events: Vec<EventJson> = batch_events.into_iter().map(Into::into).collect();
         Ok(Json(events))
     }
 

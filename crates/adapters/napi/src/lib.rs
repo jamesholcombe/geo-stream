@@ -193,7 +193,9 @@ impl GeoEngineNode {
             })
             .collect();
 
-        let events = self.inner.process_batch(engine_updates);
+        // Monotonicity violations are collected but not surfaced as JS errors;
+        // valid events for the batch are still returned.
+        let (events, _errors) = self.inner.process_batch(engine_updates);
 
         events
             .into_iter()
