@@ -8,7 +8,26 @@ use std::collections::BTreeSet;
 use std::fmt;
 use thiserror::Error;
 
-/// A named geofence as a single polygon ring (holes not used in POC).
+/// R-tree wrapper for a radius zone: stores the zone's index in the Vec and its AABB.
+#[derive(Clone, Copy)]
+struct IndexedRadius {
+    index: usize,
+    envelope: AABB<[f64; 2]>,
+}
+
+impl RTreeObject for IndexedRadius {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        self.envelope
+    }
+}
+
+fn radius_aabb(cx: f64, cy: f64, r: f64) -> AABB<[f64; 2]> {
+    AABB::from_corners([cx - r, cy - r], [cx + r, cy + r])
+}
+
+/// A named geofence as a polygon (exterior ring plus optional interior holes).
 #[derive(Debug, Clone)]
 pub struct Geofence {
     pub id: String,
@@ -51,7 +70,7 @@ pub trait SpatialIndex {
     fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String>;
 }
 
-/// R-tree index on polygon bounding boxes with exact `contains` refinement; radius zones linear scan.
+/// R-tree index on polygon bounding boxes with exact `contains` refinement; radius zones also R-tree indexed.
 pub struct NaiveSpatialIndex {
     fences: Vec<Geofence>,
     fence_tree: RTree<IndexedPolygon>,
@@ -60,6 +79,7 @@ pub struct NaiveSpatialIndex {
     catalog: Vec<Geofence>,
     catalog_tree: RTree<IndexedPolygon>,
     radius_zones: Vec<RadiusZone>,
+    radius_tree: RTree<IndexedRadius>,
 }
 
 impl Default for NaiveSpatialIndex {
@@ -72,6 +92,7 @@ impl Default for NaiveSpatialIndex {
             catalog: Vec::new(),
             catalog_tree: RTree::new(),
             radius_zones: Vec::new(),
+            radius_tree: RTree::new(),
         }
     }
 }
@@ -244,7 +265,10 @@ impl NaiveSpatialIndex {
         if self.id_exists(&zone.id) {
             return Err(SpatialError::DuplicateZoneId(zone.id.clone()));
         }
+        let envelope = radius_aabb(zone.cx, zone.cy, zone.r);
         self.radius_zones.push(zone);
+        let index = self.radius_zones.len() - 1;
+        self.radius_tree.insert(IndexedRadius { index, envelope });
         Ok(())
     }
 
@@ -261,9 +285,13 @@ impl NaiveSpatialIndex {
     }
 
     pub fn containing_radius_zones(&self, point: (f64, f64)) -> Vec<&RadiusZone> {
-        self.radius_zones
-            .iter()
-            .filter(|z| z.contains_point(point.0, point.1))
+        let probe = point_probe_envelope(point);
+        self.radius_tree
+            .locate_in_envelope_intersecting(&probe)
+            .filter(|obj| {
+                self.radius_zones[obj.index].contains_point(point.0, point.1)
+            })
+            .map(|obj| &self.radius_zones[obj.index])
             .collect()
     }
 
@@ -284,7 +312,9 @@ impl SpatialIndex for NaiveSpatialIndex {
 
     fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         out.clear();
-        for z in &self.radius_zones {
+        let probe = point_probe_envelope(point);
+        for obj in self.radius_tree.locate_in_envelope_intersecting(&probe) {
+            let z = &self.radius_zones[obj.index];
             if z.contains_point(point.0, point.1) {
                 out.insert(z.id.clone());
             }
@@ -310,14 +340,20 @@ pub fn point_in_polygon(point: (f64, f64), polygon: &Polygon<f64>) -> bool {
     polygon.contains(&pt)
 }
 
-fn validate_polygon(polygon: &Polygon<f64>) -> Result<(), SpatialError> {
-    let exterior: &LineString<f64> = polygon.exterior();
-    let n = exterior.coords().count();
-    if n < 4 {
+fn validate_ring(ring: &LineString<f64>) -> Result<(), SpatialError> {
+    if ring.coords().count() < 4 {
         return Err(SpatialError::InvalidPolygon);
     }
-    if !exterior.is_closed() {
+    if !ring.is_closed() {
         return Err(SpatialError::InvalidPolygon);
+    }
+    Ok(())
+}
+
+fn validate_polygon(polygon: &Polygon<f64>) -> Result<(), SpatialError> {
+    validate_ring(polygon.exterior())?;
+    for interior in polygon.interiors() {
+        validate_ring(interior)?;
     }
     Ok(())
 }
@@ -351,6 +387,14 @@ impl NaiveSpatialIndex {
             .min()
             .map(String::from)
     }
+
+    fn linear_radius_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
+        self.radius_zones
+            .iter()
+            .filter(|z| z.contains_point(p.0, p.1))
+            .map(|z| z.id.clone())
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -383,11 +427,95 @@ mod tests {
         )
     }
 
+    /// A 10×10 square (0,0)–(10,10) with a 4×4 hole centred at (5,5), i.e. (3,3)–(7,7).
+    fn square_with_hole() -> Polygon<f64> {
+        Polygon::new(
+            LineString::from(vec![
+                (0.0, 0.0),
+                (10.0, 0.0),
+                (10.0, 10.0),
+                (0.0, 10.0),
+                (0.0, 0.0),
+            ]),
+            vec![LineString::from(vec![
+                (3.0, 3.0),
+                (7.0, 3.0),
+                (7.0, 7.0),
+                (3.0, 7.0),
+                (3.0, 3.0),
+            ])],
+        )
+    }
+
     #[test]
     fn inside_and_outside() {
         let p = square();
         assert!(point_in_polygon((5.0, 5.0), &p));
         assert!(!point_in_polygon((50.0, 5.0), &p));
+    }
+
+    #[test]
+    fn point_in_hole_is_outside_polygon() {
+        // (5, 5) is inside the hole — should NOT be contained.
+        let p = square_with_hole();
+        assert!(!point_in_polygon((5.0, 5.0), &p));
+    }
+
+    #[test]
+    fn point_in_exterior_outside_hole_is_inside_polygon() {
+        // (1, 1) is in the exterior ring but outside the hole — should be contained.
+        let p = square_with_hole();
+        assert!(point_in_polygon((1.0, 1.0), &p));
+    }
+
+    #[test]
+    fn polygon_without_holes_still_works() {
+        let p = square();
+        assert!(point_in_polygon((5.0, 5.0), &p));
+        assert!(!point_in_polygon((15.0, 5.0), &p));
+    }
+
+    #[test]
+    fn geofence_with_hole_excludes_point_in_hole() {
+        let mut idx = NaiveSpatialIndex::new();
+        idx.try_push(Geofence {
+            id: "holey".into(),
+            polygon: square_with_hole(),
+        })
+        .unwrap();
+        // Inside hole → not contained.
+        assert!(idx.containing_geofences((5.0, 5.0)).is_empty());
+        // Outside hole but inside exterior → contained.
+        let hits = idx.containing_geofences((1.0, 1.0));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "holey");
+    }
+
+    #[test]
+    fn invalid_hole_ring_rejected() {
+        // A hole ring with only 3 points (not closed, not ≥4) must fail validation.
+        let bad = Polygon::new(
+            LineString::from(vec![
+                (0.0, 0.0),
+                (10.0, 0.0),
+                (10.0, 10.0),
+                (0.0, 10.0),
+                (0.0, 0.0),
+            ]),
+            vec![LineString::from(vec![
+                (1.0, 1.0),
+                (2.0, 1.0),
+                (1.0, 1.0), // only 3 points; not a valid ring (< 4)
+            ])],
+        );
+        let mut idx = NaiveSpatialIndex::new();
+        let err = idx
+            .try_push(Geofence {
+                id: "bad_hole".into(),
+                polygon: bad,
+            })
+            .unwrap_err();
+        assert!(matches!(err, SpatialError::InvalidPolygon));
     }
 
     #[test]
@@ -530,6 +658,37 @@ mod tests {
                 idx.linear_primary_catalog_at(p),
                 "probe {p:?}"
             );
+        }
+    }
+
+    #[test]
+    fn rtree_radius_membership_matches_linear_scan() {
+        let mut idx = NaiveSpatialIndex::new();
+        // Spread disks at varied positions and radii so some overlap and some don't.
+        for i in 0..20u32 {
+            let cx = (i as f64) * 5.0;
+            let cy = (i as f64 % 4.0) * 5.0;
+            let r = 1.0 + (i as f64 % 3.0);
+            idx.try_push_radius_zone(RadiusZone {
+                id: format!("rz{i}"),
+                cx,
+                cy,
+                r,
+            })
+            .unwrap();
+        }
+        let probes = [
+            (0.0, 0.0),
+            (5.0, 0.0),
+            (10.0, 5.0),
+            (50.0, 50.0),
+            (1000.0, 1000.0),
+            (0.5, 0.5),
+        ];
+        for p in probes {
+            let mut rt = BTreeSet::new();
+            idx.radius_membership_at(p, &mut rt);
+            assert_eq!(rt, idx.linear_radius_ids_at(p), "probe {p:?}");
         }
     }
 }
