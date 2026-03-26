@@ -37,7 +37,7 @@ enum InputLine {
     Update {
         id: String,
         location: [f64; 2],
-        /// Unix epoch milliseconds for this observation. Omitted or null → `0`.
+        /// Unix epoch milliseconds for this observation. Omitted or null -> `0`.
         #[serde(default, rename = "t")]
         t_ms: u64,
         /// Protocol version (optional); reserved for forward compatibility.
@@ -269,26 +269,30 @@ where
                 });
                 let should_flush = config.batch_size > 0 && pending.len() >= config.batch_size;
                 if should_flush {
-                    flush_batch(engine, &mut pending, &mut out)?;
+                    flush_batch(engine, &mut pending, &mut out, &mut err)?;
                 }
             }
         }
     }
 
     if !pending.is_empty() {
-        flush_batch(engine, &mut pending, &mut out)?;
+        flush_batch(engine, &mut pending, &mut out, &mut err)?;
     }
 
     Ok(())
 }
 
-fn flush_batch<O: Write>(
+fn flush_batch<O: Write, E: Write>(
     engine: &mut Engine,
     pending: &mut Vec<PointUpdate>,
     out: &mut O,
+    err: &mut E,
 ) -> Result<(), StdioAdapterError> {
     let batch = std::mem::take(pending);
-    let events = engine.process_batch(batch);
+    let (events, errors) = engine.process_batch(batch);
+    for e in errors {
+        writeln_err(err, &e.to_string())?;
+    }
     for ev in events {
         let line: NdjsonEvent = ev.into();
         writeln!(out, "{}", serde_json::to_string(&line)?)?;

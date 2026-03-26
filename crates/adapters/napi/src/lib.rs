@@ -4,7 +4,7 @@ use polygon_json::polygon_from_json_value;
 use serde::Serialize;
 
 // ---------------------------------------------------------------------------
-// Input types — #[napi(object)] generates TypeScript interfaces
+// Input types -- #[napi(object)] generates TypeScript interfaces
 // ---------------------------------------------------------------------------
 
 #[napi(object)]
@@ -23,7 +23,7 @@ pub struct DwellOptionsJs {
 }
 
 // ---------------------------------------------------------------------------
-// Event DTO — serialized to serde_json::Value for the JS layer.
+// Event DTO -- serialized to serde_json::Value for the JS layer.
 // Uses `kind` tag (more idiomatic for JS than `event`).
 // `region` in AssignmentChanged is NOT skipped when None so JS consumers
 // receive `null` (unassigned) rather than an absent field.
@@ -193,7 +193,7 @@ impl GeoEngineNode {
             })
             .collect();
 
-        let events = self.inner.process_batch(engine_updates);
+        let (events, _errors) = self.inner.process_batch(engine_updates);
 
         events
             .into_iter()
