@@ -6,6 +6,7 @@
 CLI_PKG   := cli
 CLI_BIN   := geo-stream
 HTTP_BIN  := geo-stream-http
+NAPI_DIR  := crates/adapters/napi
 SAMPLE    := examples/sample-input.ndjson
 IMAGE     := geo-stream
 
@@ -66,6 +67,22 @@ build-http: ## Build HTTP adapter binary (debug)
 .PHONY: run-http
 run-http: build-http ## Run HTTP server on 0.0.0.0:8080 (debug build)
 	./target/debug/$(HTTP_BIN) --listen 0.0.0.0:8080
+
+.PHONY: napi-install
+napi-install: ## Install npm dependencies for the NAPI adapter
+	cd $(NAPI_DIR) && npm install
+
+.PHONY: napi-build
+napi-build: napi-install ## Build the NAPI native module (debug)
+	cd $(NAPI_DIR) && npm run build:debug
+
+.PHONY: napi-build-release
+napi-build-release: napi-install ## Build the NAPI native module (release)
+	cd $(NAPI_DIR) && npm run build
+
+.PHONY: napi-typecheck
+napi-typecheck: ## Type-check types.ts against the generated index.d.ts
+	cd $(NAPI_DIR) && npm run typecheck
 
 .PHONY: clean
 clean: ## Remove target/ and build artifacts
