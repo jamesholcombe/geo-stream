@@ -98,7 +98,7 @@ HTTP routes: `POST /v1/register_geofence`, `POST /v1/register_corridor`, `POST /
 | `examples/` | Sample NDJSON / GeoJSON |
 | `docker/` | Multi-stage image, CLI entrypoint |
 
-Background and evolution: [protocol/ROADMAP.md](protocol/ROADMAP.md).
+Background, evolution, and planned features: [ROADMAP.md](ROADMAP.md).
 
 ## Docker
 
