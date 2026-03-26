@@ -49,8 +49,8 @@ fn process_batch_steady_one_entity(c: &mut Criterion) {
             }];
             engine.process_batch(batch.clone());
             b.iter(|| {
-                let events = engine.process_batch(batch.clone());
-                black_box(events)
+                let result = engine.process_batch(batch.clone());
+                black_box(result)
             });
         });
     }
@@ -79,8 +79,8 @@ fn process_batch_steady_many_entities(c: &mut Criterion) {
                     .collect();
                 engine.process_batch(batch.clone());
                 b.iter(|| {
-                    let events = engine.process_batch(batch.clone());
-                    black_box(events)
+                    let result = engine.process_batch(batch.clone());
+                    black_box(result)
                 });
             },
         );
@@ -136,8 +136,8 @@ fn process_batch_mixed_zones_steady(c: &mut Criterion) {
         engine.process_batch(batch.clone());
 
         b.iter(|| {
-            let events = engine.process_batch(batch.clone());
-            black_box(events)
+            let result = engine.process_batch(batch.clone());
+            black_box(result)
         });
     });
 }

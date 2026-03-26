@@ -108,7 +108,7 @@ These define what a stable, reliable v1 looks like.
 - [ ] Fix `SpatialRule::apply` to use `SpatialIndex` trait (or generic bound) rather than `NaiveSpatialIndex`
 - [ ] Implement R-tree spatial index for radius zones
 - [ ] Handle polygon holes correctly in point-in-polygon
-- [ ] Define and enforce timestamp monotonicity contract per entity; add tests for violations
+- [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
 - [ ] Add dwell / debounce support for corridors
 - [ ] Resolve zone ID scoping (global vs per-type); update protocol if changed
 - [ ] Merge `polygon-json` into `crates/spatial`

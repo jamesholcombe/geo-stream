@@ -273,65 +273,41 @@ enum EventTier {
 
 fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
     match e {
-        Event::Enter {
-            id,
-            geofence,
-            t_ms,
-        } => (
+        Event::Enter { id, geofence, t_ms } => (
             id.as_str(),
             *t_ms,
             EventTier::Geofence,
             geofence.as_str(),
             0,
         ),
-        Event::Exit {
-            id,
-            geofence,
-            t_ms,
-        } => (
+        Event::Exit { id, geofence, t_ms } => (
             id.as_str(),
             *t_ms,
             EventTier::Geofence,
             geofence.as_str(),
             1,
         ),
-        Event::EnterCorridor {
-            id,
-            corridor,
-            t_ms,
-        } => (
+        Event::EnterCorridor { id, corridor, t_ms } => (
             id.as_str(),
             *t_ms,
             EventTier::Corridor,
             corridor.as_str(),
             0,
         ),
-        Event::ExitCorridor {
-            id,
-            corridor,
-            t_ms,
-        } => (
+        Event::ExitCorridor { id, corridor, t_ms } => (
             id.as_str(),
             *t_ms,
             EventTier::Corridor,
             corridor.as_str(),
             1,
         ),
-        Event::Approach {
-            id,
-            zone,
-            t_ms,
-        } => (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 0),
-        Event::Recede {
-            id,
-            zone,
-            t_ms,
-        } => (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 1),
-        Event::AssignmentChanged {
-            id,
-            region,
-            t_ms,
-        } => {
+        Event::Approach { id, zone, t_ms } => {
+            (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 0)
+        }
+        Event::Recede { id, zone, t_ms } => {
+            (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 1)
+        }
+        Event::AssignmentChanged { id, region, t_ms } => {
             let r = region.as_deref().unwrap_or("");
             (id.as_str(), *t_ms, EventTier::Assignment, r, 0)
         }
@@ -421,10 +397,14 @@ mod tests {
         assert!(out.is_empty());
         assert!(!log.contains("z"));
 
-        geofence_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        geofence_membership_with_dwell(
+            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
 
-        geofence_membership_with_dwell("e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        geofence_membership_with_dwell(
+            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert_eq!(out.len(), 1);
         assert!(matches!(&out[0], Event::Enter { geofence, t_ms: 100, .. } if geofence == "z"));
         assert!(log.contains("z"));
@@ -454,7 +434,9 @@ mod tests {
         assert!(out.is_empty());
         assert!(log.contains("z"));
 
-        geofence_membership_with_dwell("e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        geofence_membership_with_dwell(
+            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert_eq!(out.len(), 1);
         assert!(matches!(&out[0], Event::Exit { geofence, t_ms: 100, .. } if geofence == "z"));
         assert!(!log.contains("z"));
@@ -478,7 +460,9 @@ mod tests {
 
         geofence_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         phys.clear();
-        geofence_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        geofence_membership_with_dwell(
+            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
         assert!(ep.is_empty());
     }
