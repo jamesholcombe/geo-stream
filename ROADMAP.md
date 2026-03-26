@@ -105,9 +105,9 @@ These define what a stable, reliable v1 looks like.
 
 ### v1.0 — Correctness and abstraction cleanup
 
-- [ ] Fix `SpatialRule::apply` to use `SpatialIndex` trait (or generic bound) rather than `NaiveSpatialIndex`
-- [ ] Implement R-tree spatial index for radius zones
-- [ ] Handle polygon holes correctly in point-in-polygon
+- [x] Fix `SpatialRule::apply` to use `SpatialIndex` trait (or generic bound) rather than `NaiveSpatialIndex`
+- [x] Implement R-tree spatial index for radius zones
+- [x] Handle polygon holes correctly in point-in-polygon
 - [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
 - [ ] Add dwell / debounce support for corridors
 - [ ] Resolve zone ID scoping (global vs per-type); update protocol if changed
