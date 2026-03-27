@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Auto-format with rustfmt before committing.
+# Reformatted files are re-staged so the commit always contains formatted code.
+
+echo "Running cargo fmt..."
+cargo fmt --all
+
+# Re-stage any files that rustfmt changed.
+git diff --name-only | xargs -r git add
+
+echo "Format check passed."

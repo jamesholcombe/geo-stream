@@ -16,6 +16,11 @@ help: ## List targets
 	@echo ""
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-22s %s\n", $$1, $$2}'
 
+.PHONY: init
+init: install-hooks napi-install ## Bootstrap dev environment (hooks + npm deps)
+	@rustup component add rustfmt clippy 2>/dev/null || true
+	@echo "Dev environment ready. Run 'make build' to compile."
+
 .PHONY: build
 build: ## Build the workspace (debug)
 	cargo build
@@ -83,6 +88,12 @@ napi-build-release: napi-install ## Build the NAPI native module (release)
 .PHONY: napi-typecheck
 napi-typecheck: ## Type-check types.ts against the generated index.d.ts
 	cd $(NAPI_DIR) && npm run typecheck
+
+.PHONY: install-hooks
+install-hooks: ## Install git pre-commit hook (auto-formats with cargo fmt)
+	@cp scripts/hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "pre-commit hook installed"
 
 .PHONY: clean
 clean: ## Remove target/ and build artifacts
