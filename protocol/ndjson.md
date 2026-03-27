@@ -44,9 +44,9 @@ Optional **`t`**: Unix epoch time in **milliseconds** for this observation. If o
 
 Radius and polygon tests use the **same planar coordinate system** as `location` and polygon rings. Distances are **Euclidean** in those units. The engine does not reproject or use geodesic distance.
 
-## Global zone ids
+## Zone id scoping
 
-Every `id` for `register_geofence`, `register_catalog_region`, and `register_radius` must be **unique across all registration kinds**. Duplicate ids are rejected.
+Zone `id` values are **scoped per registration kind**. The same `id` string may be used independently for a geofence, a catalog region, and a radius zone without conflict. Duplicate ids within the same kind are rejected.
 
 ## Input: register catalog region
 
