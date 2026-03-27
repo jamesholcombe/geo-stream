@@ -3,10 +3,40 @@
 use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
 use geo::{LineString, Point, Polygon};
+use geojson::Geometry;
 use rstar::{RTree, RTreeObject, AABB};
+use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fmt;
 use thiserror::Error;
+
+// ---------------------------------------------------------------------------
+// GeoJSON polygon parsing (previously the standalone `polygon-json` crate)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Error)]
+pub enum PolygonJsonError {
+    #[error("invalid GeoJSON geometry: {0}")]
+    InvalidGeometry(String),
+    #[error("unsupported geometry for geofence")]
+    UnsupportedGeometry,
+    #[error("geofence polygon must be a GeoJSON Polygon")]
+    NotPolygon,
+}
+
+/// Parse `value` as a GeoJSON Polygon geometry and return a [`geo::Polygon`] with all rings
+/// (exterior plus any interior holes).
+pub fn polygon_from_json_value(value: &Value) -> Result<Polygon<f64>, PolygonJsonError> {
+    let geom: Geometry = serde_json::from_value(value.clone())
+        .map_err(|e| PolygonJsonError::InvalidGeometry(e.to_string()))?;
+    let g: geo::Geometry<f64> = geom
+        .try_into()
+        .map_err(|_| PolygonJsonError::UnsupportedGeometry)?;
+    match g {
+        geo::Geometry::Polygon(p) => Ok(p),
+        _ => Err(PolygonJsonError::NotPolygon),
+    }
+}
 
 /// R-tree wrapper for a radius zone: stores the zone's index in the Vec and its AABB.
 #[derive(Clone, Copy)]
@@ -687,5 +717,58 @@ mod tests {
             idx.radius_membership_at(p, &mut rt);
             assert_eq!(rt, idx.linear_radius_ids_at(p), "probe {p:?}");
         }
+    }
+
+    // --- polygon_from_json_value tests (moved from the polygon-json crate) ---
+
+    #[test]
+    fn polygon_json_simple_no_holes() {
+        use serde_json::json;
+        let v = json!({
+            "type": "Polygon",
+            "coordinates": [
+                [[0.0,0.0],[10.0,0.0],[10.0,10.0],[0.0,10.0],[0.0,0.0]]
+            ]
+        });
+        let p = polygon_from_json_value(&v).unwrap();
+        assert_eq!(p.interiors().len(), 0);
+    }
+
+    #[test]
+    fn polygon_json_with_hole_parsed_correctly() {
+        use serde_json::json;
+        let v = json!({
+            "type": "Polygon",
+            "coordinates": [
+                [[0.0,0.0],[10.0,0.0],[10.0,10.0],[0.0,10.0],[0.0,0.0]],
+                [[3.0,3.0],[7.0,3.0],[7.0,7.0],[3.0,7.0],[3.0,3.0]]
+            ]
+        });
+        let p = polygon_from_json_value(&v).unwrap();
+        assert_eq!(p.interiors().len(), 1, "expected one interior ring (hole)");
+        use geo::algorithm::contains::Contains;
+        use geo::Point;
+        assert!(!p.contains(&Point::new(5.0_f64, 5.0_f64)));
+        assert!(p.contains(&Point::new(1.0_f64, 1.0_f64)));
+    }
+
+    #[test]
+    fn polygon_json_non_polygon_rejected() {
+        use serde_json::json;
+        let v = json!({ "type": "Point", "coordinates": [0.0, 0.0] });
+        assert!(matches!(
+            polygon_from_json_value(&v),
+            Err(PolygonJsonError::NotPolygon)
+        ));
+    }
+
+    #[test]
+    fn polygon_json_invalid_json_rejected() {
+        use serde_json::json;
+        let v = json!("not a geometry");
+        assert!(matches!(
+            polygon_from_json_value(&v),
+            Err(PolygonJsonError::InvalidGeometry(_))
+        ));
     }
 }

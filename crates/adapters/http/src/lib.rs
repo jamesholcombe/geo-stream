@@ -9,11 +9,11 @@ mod server_impl {
     use axum::routing::{get, post};
     use axum::{Json, Router};
     use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone, SpatialError};
-    use polygon_json::polygon_from_json_value;
-    use polygon_json::PolygonJsonError;
     use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
+    use spatial::polygon_from_json_value;
+    use spatial::PolygonJsonError;
     use std::sync::{Arc, Mutex};
     use tower_http::trace::TraceLayer;
     use utoipa::{OpenApi, ToSchema};

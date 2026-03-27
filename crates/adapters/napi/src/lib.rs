@@ -1,7 +1,7 @@
 use engine::{Engine, GeoEngine as _, Geofence, GeofenceDwell, PointUpdate, RadiusZone};
 use napi_derive::napi;
-use polygon_json::polygon_from_json_value;
 use serde::Serialize;
+use spatial::polygon_from_json_value;
 
 // ---------------------------------------------------------------------------
 // Input types -- #[napi(object)] generates TypeScript interfaces
