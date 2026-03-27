@@ -7,6 +7,7 @@ target/
 # Local env / secrets
 .env
 .env.*
+.claude
 
 # OS
 .DS_Store
@@ -20,7 +21,8 @@ Thumbs.db
 *~
 
 # Node.js
-node_modules/
+*/node_modules/
+node_modules
 
 # Debug / coverage
 *.profraw
