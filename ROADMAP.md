@@ -136,7 +136,7 @@ These make geo-stream useful beyond direct Rust embedding.
 
 ### Client SDKs
 
-- [ ] **TypeScript/Node.js SDK** (high priority): wrap the CLI subprocess or HTTP adapter; typed event types; async iterator interface
+- [x] **TypeScript/Node.js SDK** (high priority): wrap the CLI subprocess or HTTP adapter; typed event types; async iterator interface
 - [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
 
 ### Zone management

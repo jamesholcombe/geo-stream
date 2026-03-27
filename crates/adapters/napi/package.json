@@ -1,13 +1,27 @@
 {
-  "name": "geo-events",
+  "name": "geo-stream",
   "version": "0.1.0",
-  "description": "Native Node.js bindings for the geo-events geospatial engine",
+  "description": "Native Node.js bindings for the geo-stream geospatial stream processor",
   "main": "index.js",
-  "types": "index.d.ts",
+  "types": "types.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "types.js",
+    "types.d.ts"
+  ],
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "typecheck": "tsc --noEmit"
+    "compile": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run compile"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3",
@@ -23,5 +37,22 @@
       "x86_64-pc-windows-msvc"
     ]
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamesholcombe/geo-stream"
+  },
+  "keywords": [
+    "geofence",
+    "streaming",
+    "geospatial",
+    "location",
+    "events",
+    "spatial",
+    "napi",
+    "native"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
 }
