@@ -601,10 +601,14 @@ mod tests {
         assert!(out.is_empty());
         assert!(!log.contains("c"));
 
-        corridor_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
 
-        corridor_membership_with_dwell("e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert_eq!(out.len(), 1);
         assert!(matches!(
             &out[0],
@@ -637,7 +641,9 @@ mod tests {
         assert!(out.is_empty());
         assert!(log.contains("c"));
 
-        corridor_membership_with_dwell("e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert_eq!(out.len(), 1);
         assert!(matches!(
             &out[0],
@@ -664,7 +670,9 @@ mod tests {
 
         corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         phys.clear();
-        corridor_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
         assert!(ep.is_empty());
     }
@@ -691,13 +699,17 @@ mod tests {
 
         // Exit: starts exit_pending.
         phys.clear();
-        corridor_membership_with_dwell("e", 10, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 10, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
         assert!(xp.contains_key("c"));
 
         // Re-enter before threshold: exit pending is cancelled, still logically inside.
         phys.insert("c".into());
-        corridor_membership_with_dwell("e", 20, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        corridor_membership_with_dwell(
+            "e", 20, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
+        );
         assert!(out.is_empty());
         assert!(xp.is_empty());
         assert!(log.contains("c"));
