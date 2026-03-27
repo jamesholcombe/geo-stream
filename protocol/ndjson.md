@@ -46,15 +46,7 @@ Radius and polygon tests use the **same planar coordinate system** as `location`
 
 ## Global zone ids
 
-Every `id` for `register_geofence`, `register_corridor`, `register_catalog_region`, and `register_radius` must be **unique across all four registration kinds**. Duplicate ids are rejected.
-
-## Input: register corridor (pre-buffered polygon)
-
-Same GeoJSON **Polygon** shape as geofences. Corridors are stored as polygons; clients supply a **buffered** corridor footprint. Events use `enter_corridor` / `exit_corridor`.
-
-```json
-{"type":"register_corridor","id":"corridor-main","polygon":{"type":"Polygon","coordinates":[[[0,0],[2,0],[2,0.5],[0,0.5],[0,0]]]}}
-```
+Every `id` for `register_geofence`, `register_catalog_region`, and `register_radius` must be **unique across all registration kinds**. Duplicate ids are rejected.
 
 ## Input: register catalog region
 
@@ -88,13 +80,6 @@ Exit:
 
 ```json
 {"event":"exit","id":"c1","geofence":"zone-1","t":1700000000001}
-```
-
-## Output: corridor events
-
-```json
-{"event":"enter_corridor","id":"c1","corridor":"corridor-main","t":0}
-{"event":"exit_corridor","id":"c1","corridor":"corridor-main","t":0}
 ```
 
 ## Output: radius events
@@ -135,9 +120,9 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 
 1. Entity `id`
 2. Observation time **`t`** (milliseconds)
-3. Category: **geofence** (`enter` / `exit`), then **corridor**, then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
-4. Within a category, by zone / geofence / corridor / radius id (lexicographic)
-5. For geofence, corridor, and radius: **enter-type** (or `approach`) before **exit-type** (or `recede`)
+3. Category: **geofence** (`enter` / `exit`), then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
+4. Within a category, by zone / geofence / radius id (lexicographic)
+5. For geofence and radius: **enter-type** (or `approach`) before **exit-type** (or `recede`)
 
 ## Example: pipe a file
 
@@ -145,7 +130,7 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 cargo run -p cli --bin geo-stream -- < examples/sample-input.ndjson
 ```
 
-A larger example with corridors, catalog regions, and radius zones: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
+A larger example with catalog regions and radius zones: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
 
 Docker (from **this repository root**, where `Cargo.toml` lives):
 
@@ -161,7 +146,6 @@ See [`ROADMAP.md`](ROADMAP.md). The optional `http` adapter exposes JSON endpoin
 | Endpoint | Body shape |
 |----------|------------|
 | `POST /v1/register_geofence` | `{"id":"...","polygon":{ GeoJSON Polygon }}` |
-| `POST /v1/register_corridor` | same |
 | `POST /v1/register_catalog_region` | same |
 | `POST /v1/register_radius` | `{"id":"...","cx":0,"cy":0,"r":1.5}` |
 | `POST /v1/ingest` | `{"updates":[...]}`; response events match the stdout event shapes above (HTTP may omit some optional fields where serde skips them). |

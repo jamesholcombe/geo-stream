@@ -42,16 +42,6 @@ enum EventDto {
         geofence: String,
         t_ms: u64,
     },
-    EnterCorridor {
-        id: String,
-        corridor: String,
-        t_ms: u64,
-    },
-    ExitCorridor {
-        id: String,
-        corridor: String,
-        t_ms: u64,
-    },
     Approach {
         id: String,
         zone: String,
@@ -74,12 +64,6 @@ impl From<engine::Event> for EventDto {
         match ev {
             engine::Event::Enter { id, geofence, t_ms } => EventDto::Enter { id, geofence, t_ms },
             engine::Event::Exit { id, geofence, t_ms } => EventDto::Exit { id, geofence, t_ms },
-            engine::Event::EnterCorridor { id, corridor, t_ms } => {
-                EventDto::EnterCorridor { id, corridor, t_ms }
-            }
-            engine::Event::ExitCorridor { id, corridor, t_ms } => {
-                EventDto::ExitCorridor { id, corridor, t_ms }
-            }
             engine::Event::Approach { id, zone, t_ms } => EventDto::Approach { id, zone, t_ms },
             engine::Event::Recede { id, zone, t_ms } => EventDto::Recede { id, zone, t_ms },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
@@ -136,19 +120,6 @@ impl GeoEngineNode {
                 .map_err(engine_err),
             None => self.inner.register_geofence(geofence).map_err(engine_err),
         }
-    }
-
-    /// Register a named corridor from a GeoJSON Polygon object.
-    #[napi]
-    pub fn register_corridor(
-        &mut self,
-        id: String,
-        polygon: serde_json::Value,
-    ) -> napi::Result<()> {
-        let poly = polygon_from_json_value(&polygon)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        let corridor = Geofence { id, polygon: poly };
-        self.inner.register_corridor(corridor).map_err(engine_err)
     }
 
     /// Register a named catalog region from a GeoJSON Polygon object.

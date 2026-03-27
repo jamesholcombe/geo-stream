@@ -36,18 +36,3 @@ fn radius_boundary_inclusive_emits_approach_only() {
     assert_eq!(v["id"], "e1");
     assert_eq!(v["zone"], "r1");
 }
-
-#[test]
-fn geofence_events_before_corridor_for_same_update() {
-    let input = fixture("corridor_geofence.ndjson");
-    let out = common::run_geo_stream(input.as_bytes());
-    common::assert_success_empty_stderr(&out);
-    let lines = common::stdout_event_lines(&out);
-    assert_eq!(lines.len(), 2, "stdout: {:?}", lines);
-    let a: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
-    let b: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
-    assert_eq!(a["event"], "enter");
-    assert_eq!(a["geofence"], "f1");
-    assert_eq!(b["event"], "enter_corridor");
-    assert_eq!(b["corridor"], "c1");
-}

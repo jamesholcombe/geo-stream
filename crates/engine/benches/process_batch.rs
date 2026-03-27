@@ -88,7 +88,7 @@ fn process_batch_steady_many_entities(c: &mut Criterion) {
     group.finish();
 }
 
-/// Geofence + corridor + catalog + radius registered; single steady update.
+/// Geofence + catalog + radius registered; single steady update.
 fn process_batch_mixed_zones_steady(c: &mut Criterion) {
     c.bench_function("process_batch_mixed_zones_one_entity", |b| {
         let mut engine = Engine::new();
@@ -100,12 +100,6 @@ fn process_batch_mixed_zones_steady(c: &mut Criterion) {
                 })
                 .unwrap();
         }
-        engine
-            .register_corridor(Geofence {
-                id: "corridor-1".into(),
-                polygon: unit_square_at(0.0, 10.0),
-            })
-            .unwrap();
         engine
             .register_catalog_region(Geofence {
                 id: "cat-a".into(),

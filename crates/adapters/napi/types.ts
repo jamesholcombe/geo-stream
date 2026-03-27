@@ -20,8 +20,6 @@ export type { PointUpdateJs as PointUpdate, DwellOptionsJs as DwellOptions } fro
 export type GeoEvent =
   | { kind: 'enter';              id: string; geofence: string; t_ms: number }
   | { kind: 'exit';               id: string; geofence: string; t_ms: number }
-  | { kind: 'enter_corridor';     id: string; corridor: string; t_ms: number }
-  | { kind: 'exit_corridor';      id: string; corridor: string; t_ms: number }
   | { kind: 'approach';           id: string; zone: string;     t_ms: number }
   | { kind: 'recede';             id: string; zone: string;     t_ms: number }
   /** `region` is `null` when the entity left all catalog regions (unassigned). */
@@ -42,10 +40,6 @@ export class GeoEngine {
 
   registerGeofence(id: string, polygon: object, dwell?: DwellOptionsJs): void {
     this.node.registerGeofence(id, polygon, dwell ?? null)
-  }
-
-  registerCorridor(id: string, polygon: object): void {
-    this.node.registerCorridor(id, polygon)
   }
 
   registerCatalogRegion(id: string, polygon: object): void {

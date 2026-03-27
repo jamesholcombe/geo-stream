@@ -104,10 +104,6 @@ engine.registerGeofence('warehouse', polygon, {
 })
 ```
 
-#### `registerCorridor(id, polygon)`
-
-Register a named corridor from a GeoJSON `Polygon`. Fires `enter_corridor` / `exit_corridor` as entities pass through.
-
 #### `registerCatalogRegion(id, polygon)`
 
 Register a catalog region. Fires `assignment_changed` whenever an entity's current containing region changes, including when it leaves all regions (`region: null`).
@@ -142,27 +138,18 @@ Updates within a batch are sorted by `(id, tMs)` before processing, so order wit
 All events are a discriminated union on `kind`. Switch exhaustively for compile-time completeness guarantees:
 
 ```typescript
-import type { GeoEvent } from 'geo-stream'
-
-function handle(event: GeoEvent) {
-  switch (event.kind) {
-    case 'enter':              // event.geofence, event.id, event.t_ms
-    case 'exit':               // event.geofence, event.id, event.t_ms
-    case 'enter_corridor':     // event.corridor, event.id, event.t_ms
-    case 'exit_corridor':      // event.corridor, event.id, event.t_ms
-    case 'approach':           // event.zone,     event.id, event.t_ms
-    case 'recede':             // event.zone,     event.id, event.t_ms
-    case 'assignment_changed': // event.region (string | null), event.id, event.t_ms
-  }
-}
+type GeoEvent =
+  | { kind: 'enter';              id: string; geofence: string;      t_ms: number }
+  | { kind: 'exit';               id: string; geofence: string;      t_ms: number }
+  | { kind: 'approach';           id: string; zone: string;          t_ms: number }
+  | { kind: 'recede';             id: string; zone: string;          t_ms: number }
+  | { kind: 'assignment_changed'; id: string; region: string | null; t_ms: number }
 ```
 
 | `kind` | Trigger | Key field |
 |--------|---------|-----------|
 | `enter` | Entity enters a geofence | `geofence` |
 | `exit` | Entity exits a geofence | `geofence` |
-| `enter_corridor` | Entity enters a corridor | `corridor` |
-| `exit_corridor` | Entity exits a corridor | `corridor` |
 | `approach` | Entity enters a radius zone | `zone` |
 | `recede` | Entity exits a radius zone | `zone` |
 | `assignment_changed` | Entity's catalog region changes | `region` (`null` = unassigned) |
@@ -175,8 +162,8 @@ Working examples are in [`examples/typescript/`](examples/typescript/):
 
 | File | What it shows |
 |------|---------------|
-| [`01-basic-geofence.ts`](examples/typescript/01-basic-geofence.ts) | Register a polygon, ingest points, observe enter/exit |
-| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All four zone types in one script |
+| [`01-basic-geofence.ts`](examples/typescript/01-basic-geofence.ts) | Register a polygon, ingest points, observe enter/exit events |
+| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All three zone types — geofence, catalog, radius — in one script |
 | [`03-dwell.ts`](examples/typescript/03-dwell.ts) | Dwell thresholds to debounce boundary hover |
 
 ```bash
@@ -237,7 +224,6 @@ cargo build -p cli --features http --bin geo-stream-http
 | `GET` | `/health` | `{"status":"ok"}` |
 | `GET` | `/openapi.json` | OpenAPI 3 spec |
 | `POST` | `/v1/register_geofence` | Register a polygon geofence |
-| `POST` | `/v1/register_corridor` | Register a corridor |
 | `POST` | `/v1/register_catalog_region` | Register a catalog region |
 | `POST` | `/v1/register_radius` | Register a radius zone |
 | `POST` | `/v1/ingest` | `{"updates":[...]}` → events |

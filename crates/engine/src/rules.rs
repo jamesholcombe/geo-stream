@@ -2,8 +2,8 @@
 
 use spatial::SpatialIndex;
 use state::{
-    assignment_transition, corridor_membership_with_dwell, geofence_membership_with_dwell,
-    radius_membership_transitions, CorridorDwell, EntityState, Event, GeofenceDwell,
+    assignment_transition, geofence_membership_with_dwell, radius_membership_transitions,
+    EntityState, Event, GeofenceDwell,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -13,7 +13,6 @@ pub struct RuleContext<'a> {
     pub position: (f64, f64),
     pub at_ms: u64,
     pub geofence_dwell: &'a HashMap<String, GeofenceDwell>,
-    pub corridor_dwell: &'a HashMap<String, CorridorDwell>,
 }
 
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
@@ -51,34 +50,6 @@ impl SpatialRule for GeofenceRule {
             &mut state.geofence_enter_pending,
             &mut state.geofence_exit_pending,
             ctx.geofence_dwell,
-            out,
-        );
-    }
-}
-
-/// Corridor enter/exit (separate polygon layer) with optional dwell / exit-debounce.
-#[derive(Debug, Copy, Clone, Default)]
-pub struct CorridorRule;
-
-impl SpatialRule for CorridorRule {
-    fn apply(
-        &self,
-        spatial: &dyn SpatialIndex,
-        ctx: &RuleContext<'_>,
-        state: &mut EntityState,
-        scratch: &mut BTreeSet<String>,
-        out: &mut Vec<Event>,
-    ) {
-        scratch.clear();
-        spatial.corridor_membership_at(ctx.position, scratch);
-        corridor_membership_with_dwell(
-            ctx.entity_id,
-            ctx.at_ms,
-            scratch,
-            &mut state.inside_corridor,
-            &mut state.corridor_enter_pending,
-            &mut state.corridor_exit_pending,
-            ctx.corridor_dwell,
             out,
         );
     }
@@ -133,11 +104,10 @@ impl SpatialRule for CatalogRule {
     }
 }
 
-/// Default pipeline: geofence, corridor, radius, catalog.
+/// Default pipeline: geofence, radius, catalog.
 pub fn default_rules() -> Vec<Box<dyn SpatialRule>> {
     vec![
         Box::new(GeofenceRule),
-        Box::new(CorridorRule),
         Box::new(RadiusRule),
         Box::new(CatalogRule),
     ]

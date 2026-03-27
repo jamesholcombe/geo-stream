@@ -95,7 +95,6 @@ pub enum SpatialError {
 pub trait SpatialIndex {
     fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence>;
     fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
-    fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
     fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
     fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String>;
 }
@@ -104,8 +103,6 @@ pub trait SpatialIndex {
 pub struct NaiveSpatialIndex {
     fences: Vec<Geofence>,
     fence_tree: RTree<IndexedPolygon>,
-    corridors: Vec<Geofence>,
-    corridor_tree: RTree<IndexedPolygon>,
     catalog: Vec<Geofence>,
     catalog_tree: RTree<IndexedPolygon>,
     radius_zones: Vec<RadiusZone>,
@@ -117,8 +114,6 @@ impl Default for NaiveSpatialIndex {
         Self {
             fences: Vec::new(),
             fence_tree: RTree::new(),
-            corridors: Vec::new(),
-            corridor_tree: RTree::new(),
             catalog: Vec::new(),
             catalog_tree: RTree::new(),
             radius_zones: Vec::new(),
@@ -131,7 +126,6 @@ impl fmt::Debug for NaiveSpatialIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NaiveSpatialIndex")
             .field("fences", &self.fences.len())
-            .field("corridors", &self.corridors.len())
             .field("catalog", &self.catalog.len())
             .field("radius_zones", &self.radius_zones.len())
             .finish()
@@ -227,7 +221,6 @@ impl NaiveSpatialIndex {
     fn id_exists(&self, id: &str) -> bool {
         self.fences
             .iter()
-            .chain(self.corridors.iter())
             .chain(self.catalog.iter())
             .any(|g| g.id == id)
             || self.radius_zones.iter().any(|z| z.id == id)
@@ -247,22 +240,6 @@ impl NaiveSpatialIndex {
         self.fences.push(fence);
         let index = self.fences.len() - 1;
         self.fence_tree.insert(IndexedPolygon {
-            index,
-            envelope: env,
-        });
-        Ok(())
-    }
-
-    /// Register a corridor as a pre-buffered polygon (`enter_corridor` / `exit_corridor` events).
-    pub fn try_push_corridor(&mut self, corridor: Geofence) -> Result<(), SpatialError> {
-        validate_polygon(&corridor.polygon)?;
-        if self.id_exists(&corridor.id) {
-            return Err(SpatialError::DuplicateZoneId(corridor.id.clone()));
-        }
-        let env = polygon_aabb(&corridor.polygon)?;
-        self.corridors.push(corridor);
-        let index = self.corridors.len() - 1;
-        self.corridor_tree.insert(IndexedPolygon {
             index,
             envelope: env,
         });
@@ -306,10 +283,6 @@ impl NaiveSpatialIndex {
         containing_polygons(&self.fences, &self.fence_tree, point)
     }
 
-    pub fn containing_corridors(&self, point: (f64, f64)) -> Vec<&Geofence> {
-        containing_polygons(&self.corridors, &self.corridor_tree, point)
-    }
-
     pub fn containing_catalog_regions(&self, point: (f64, f64)) -> Vec<&Geofence> {
         containing_polygons(&self.catalog, &self.catalog_tree, point)
     }
@@ -331,10 +304,6 @@ impl SpatialIndex for NaiveSpatialIndex {
 
     fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         fill_polygon_zone_ids(&self.fences, &self.fence_tree, point, out);
-    }
-
-    fn corridor_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
-        fill_polygon_zone_ids(&self.corridors, &self.corridor_tree, point, out);
     }
 
     fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
@@ -390,15 +359,6 @@ impl NaiveSpatialIndex {
     fn linear_geofence_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
         let pt = Point::new(p.0, p.1);
         self.fences
-            .iter()
-            .filter(|f| f.polygon.contains(&pt))
-            .map(|f| f.id.clone())
-            .collect()
-    }
-
-    fn linear_corridor_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
-        let pt = Point::new(p.0, p.1);
-        self.corridors
             .iter()
             .filter(|f| f.polygon.contains(&pt))
             .map(|f| f.id.clone())
@@ -644,23 +604,6 @@ mod tests {
             let mut rt = BTreeSet::new();
             idx.geofence_membership_at(p, &mut rt);
             assert_eq!(rt, idx.linear_geofence_ids_at(p), "probe {p:?}");
-        }
-    }
-
-    #[test]
-    fn rtree_corridor_membership_matches_linear_scan() {
-        let mut idx = NaiveSpatialIndex::new();
-        for i in 0..16 {
-            idx.try_push_corridor(Geofence {
-                id: format!("c{i}"),
-                polygon: unit_square_at(i as f64 * 2.0, 0.0),
-            })
-            .unwrap();
-        }
-        for p in [(0.5, 0.5), (2.5, 0.5), (100.0, 0.0)] {
-            let mut rt = BTreeSet::new();
-            idx.corridor_membership_at(p, &mut rt);
-            assert_eq!(rt, idx.linear_corridor_ids_at(p));
         }
     }
 

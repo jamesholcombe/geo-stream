@@ -165,16 +165,6 @@ mod server_impl {
             geofence: String,
             t: u64,
         },
-        EnterCorridor {
-            id: String,
-            corridor: String,
-            t: u64,
-        },
-        ExitCorridor {
-            id: String,
-            corridor: String,
-            t: u64,
-        },
         Approach {
             id: String,
             zone: String,
@@ -206,16 +196,6 @@ mod server_impl {
                     geofence,
                     t: t_ms,
                 },
-                engine::Event::EnterCorridor { id, corridor, t_ms } => EventJson::EnterCorridor {
-                    id,
-                    corridor,
-                    t: t_ms,
-                },
-                engine::Event::ExitCorridor { id, corridor, t_ms } => EventJson::ExitCorridor {
-                    id,
-                    corridor,
-                    t: t_ms,
-                },
                 engine::Event::Approach { id, zone, t_ms } => {
                     EventJson::Approach { id, zone, t: t_ms }
                 }
@@ -242,7 +222,6 @@ mod server_impl {
             openapi_json_handler,
             health_handler,
             register_geofence_handler,
-            register_corridor_handler,
             register_catalog_handler,
             register_radius_handler,
             ingest_handler
@@ -305,33 +284,6 @@ mod server_impl {
         let polygon = parse_polygon(&body.polygon)?;
         let mut eng = lock_engine(&engine)?;
         eng.register_geofence(Geofence {
-            id: body.id,
-            polygon,
-        })
-        .map_err(HttpError::from)?;
-        Ok(StatusCode::NO_CONTENT)
-    }
-
-    #[utoipa::path(
-        post,
-        path = "/v1/register_corridor",
-        tag = "v1",
-        request_body = RegisterPolygonBody,
-        responses(
-            (status = 204, description = "Registered"),
-            (status = 400, description = "Invalid JSON or polygon", body = ErrorEnvelope),
-            (status = 409, description = "Zone id already exists", body = ErrorEnvelope),
-            (status = 500, description = "Internal error", body = ErrorEnvelope)
-        )
-    )]
-    async fn register_corridor_handler(
-        Extension(engine): Extension<SharedEngine>,
-        body: Result<Json<RegisterPolygonBody>, JsonRejection>,
-    ) -> Result<StatusCode, HttpError> {
-        let body = read_json(body)?;
-        let polygon = parse_polygon(&body.polygon)?;
-        let mut eng = lock_engine(&engine)?;
-        eng.register_corridor(Geofence {
             id: body.id,
             polygon,
         })
@@ -436,7 +388,6 @@ mod server_impl {
             .route("/openapi.json", get(openapi_json_handler))
             .route("/health", get(health_handler))
             .route("/v1/register_geofence", post(register_geofence_handler))
-            .route("/v1/register_corridor", post(register_corridor_handler))
             .route(
                 "/v1/register_catalog_region",
                 post(register_catalog_handler),
