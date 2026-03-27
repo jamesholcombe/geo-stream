@@ -39,10 +39,10 @@ examples/                    # Sample NDJSON and GeoJSON files
 ## Key types and API
 
 - **`GeoEngine` trait** (`crates/engine`): zone registration + `process_event(&mut self, PointUpdate) -> Vec<Event>`
-- **`Engine` struct**: concrete impl; `process_batch`, `with_rules`, `register_geofence_with_dwell`
+- **`Engine` struct**: concrete impl; `process_batch`, `with_rules`, `register_geofence_with_dwell` (plain `register_geofence` uses default instant dwell)
 - **`PointUpdate`**: `{ id, x, y, t_ms }` — `t_ms` is Unix epoch milliseconds
-- **`Event` enum** (`crates/state`): `Enter`/`Exit`, `EnterCorridor`/`ExitCorridor`, `Approach`/`Recede`, `AssignmentChanged` — each carries `t_ms`
-- **`SpatialRule` trait**: composable pipeline; default order: `GeofenceRule → CorridorRule → RadiusRule → CatalogRule`
+- **`Event` enum** (`crates/state`): `Enter`/`Exit`, `Approach`/`Recede`, `AssignmentChanged` — each carries `t_ms`
+- **`SpatialRule` trait**: composable pipeline; default order: `GeofenceRule → RadiusRule → CatalogRule`
 - **`NaiveSpatialIndex`**: R-tree (rstar) on polygon bounding boxes + exact point-in-polygon; radius zones are a linear scan
 - **`sort_events_deterministic`**: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
 
@@ -91,7 +91,6 @@ CI runs: `fmt`, `clippy -D warnings`, `cargo test`, JSON Schema validation of ex
 Done: SpatialRule decoupled from NaiveSpatialIndex, R-tree for radius zones, polygon holes, timestamp monotonicity enforcement.
 
 Remaining:
-- [ ] Dwell/debounce for corridors
 - [ ] Zone ID scoping (global vs per-type)
 - [ ] Merge `polygon-json` into `crates/spatial`
 - [ ] Tests: cross-type duplicate IDs, timestamp edge cases

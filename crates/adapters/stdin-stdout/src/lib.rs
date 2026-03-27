@@ -50,12 +50,6 @@ enum InputLine {
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
     },
-    RegisterCorridor {
-        id: String,
-        polygon: Value,
-        #[serde(default, rename = "v")]
-        _protocol_version: Option<u8>,
-    },
     RegisterCatalogRegion {
         id: String,
         polygon: Value,
@@ -82,16 +76,6 @@ enum NdjsonEvent {
     Exit {
         id: String,
         geofence: String,
-        t: u64,
-    },
-    EnterCorridor {
-        id: String,
-        corridor: String,
-        t: u64,
-    },
-    ExitCorridor {
-        id: String,
-        corridor: String,
         t: u64,
     },
     Approach {
@@ -122,16 +106,6 @@ impl From<engine::Event> for NdjsonEvent {
             engine::Event::Exit { id, geofence, t_ms } => NdjsonEvent::Exit {
                 id,
                 geofence,
-                t: t_ms,
-            },
-            engine::Event::EnterCorridor { id, corridor, t_ms } => NdjsonEvent::EnterCorridor {
-                id,
-                corridor,
-                t: t_ms,
-            },
-            engine::Event::ExitCorridor { id, corridor, t_ms } => NdjsonEvent::ExitCorridor {
-                id,
-                corridor,
                 t: t_ms,
             },
             engine::Event::Approach { id, zone, t_ms } => {
@@ -194,18 +168,6 @@ where
                     }
                 };
                 if let Err(e) = engine.register_geofence(Geofence { id, polygon: poly }) {
-                    writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
-                }
-            }
-            InputLine::RegisterCorridor { id, polygon, .. } => {
-                let poly = match polygon_from_json_value(&polygon) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
-                        continue;
-                    }
-                };
-                if let Err(e) = engine.register_corridor(Geofence { id, polygon: poly }) {
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }

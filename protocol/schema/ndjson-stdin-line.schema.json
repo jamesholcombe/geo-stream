@@ -37,19 +37,6 @@
       "type": "object",
       "required": ["type", "id", "polygon"],
       "properties": {
-        "type": { "const": "register_corridor" },
-        "id": { "type": "string" },
-        "polygon": {
-          "$ref": "geojson-polygon-geometry.schema.json#/$defs/PolygonGeometry"
-        },
-        "v": { "type": "integer", "minimum": 0, "maximum": 255 }
-      },
-      "additionalProperties": true
-    },
-    {
-      "type": "object",
-      "required": ["type", "id", "polygon"],
-      "properties": {
         "type": { "const": "register_catalog_region" },
         "id": { "type": "string" },
         "polygon": {

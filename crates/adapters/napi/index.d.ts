@@ -7,8 +7,6 @@ export declare class GeoEngineNode {
    * Optionally provide dwell thresholds to debounce enter/exit events.
    */
   registerGeofence(id: string, polygon: any, dwell?: DwellOptionsJs | undefined | null): void
-  /** Register a named corridor from a GeoJSON Polygon object. */
-  registerCorridor(id: string, polygon: any): void
   /** Register a named catalog region from a GeoJSON Polygon object. */
   registerCatalogRegion(id: string, polygon: any): void
   /** Register a named radius zone by center point and radius (same units as coordinates). */

@@ -13,17 +13,6 @@ pub struct GeofenceDwell {
     pub min_outside_ms: Option<u64>,
 }
 
-/// Minimum continuous time inside / outside before emitting enter / exit for a corridor.
-///
-/// `None` for a field means **no minimum** (immediate enter or exit when geometry changes).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CorridorDwell {
-    /// Emit [`Event::EnterCorridor`] only after the point has been inside for this many ms.
-    pub min_inside_ms: Option<u64>,
-    /// Emit [`Event::ExitCorridor`] only after the point has been outside for this many ms.
-    pub min_outside_ms: Option<u64>,
-}
-
 /// Last known position, observation time, and spatial membership used by the engine.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EntityState {
@@ -35,11 +24,6 @@ pub struct EntityState {
     pub geofence_enter_pending: HashMap<String, u64>,
     /// Geofence id → first `at_ms` seen outside while logically inside (waiting for [`GeofenceDwell::min_outside_ms`]).
     pub geofence_exit_pending: HashMap<String, u64>,
-    pub inside_corridor: BTreeSet<String>,
-    /// Corridor id → first `at_ms` seen inside while waiting for [`CorridorDwell::min_inside_ms`].
-    pub corridor_enter_pending: HashMap<String, u64>,
-    /// Corridor id → first `at_ms` seen outside while logically inside (waiting for [`CorridorDwell::min_outside_ms`]).
-    pub corridor_exit_pending: HashMap<String, u64>,
     pub inside_radius: BTreeSet<String>,
     pub catalog_region: Option<String>,
 }
@@ -55,16 +39,6 @@ pub enum Event {
     Exit {
         id: String,
         geofence: String,
-        t_ms: u64,
-    },
-    EnterCorridor {
-        id: String,
-        corridor: String,
-        t_ms: u64,
-    },
-    ExitCorridor {
-        id: String,
-        corridor: String,
         t_ms: u64,
     },
     Approach {
@@ -103,30 +77,6 @@ pub fn membership_transitions(
         out.push(Event::Exit {
             id: entity_id.to_string(),
             geofence: gid.clone(),
-            t_ms,
-        });
-    }
-    out
-}
-
-pub fn corridor_membership_transitions(
-    entity_id: &str,
-    previous: &BTreeSet<String>,
-    current: &BTreeSet<String>,
-    t_ms: u64,
-) -> Vec<Event> {
-    let mut out = Vec::new();
-    for gid in current.difference(previous) {
-        out.push(Event::EnterCorridor {
-            id: entity_id.to_string(),
-            corridor: gid.clone(),
-            t_ms,
-        });
-    }
-    for gid in previous.difference(current) {
-        out.push(Event::ExitCorridor {
-            id: entity_id.to_string(),
-            corridor: gid.clone(),
             t_ms,
         });
     }
@@ -273,103 +223,6 @@ pub fn geofence_membership_with_dwell(
     }
 }
 
-/// Corridor enter/exit with optional dwell / exit debounce.
-///
-/// Mirrors [`geofence_membership_with_dwell`] for the corridor layer.
-#[allow(clippy::too_many_arguments)]
-pub fn corridor_membership_with_dwell(
-    entity_id: &str,
-    at_ms: u64,
-    physical_inside: &BTreeSet<String>,
-    logical_inside: &mut BTreeSet<String>,
-    enter_pending: &mut HashMap<String, u64>,
-    exit_pending: &mut HashMap<String, u64>,
-    dwell_by_id: &HashMap<String, CorridorDwell>,
-    out: &mut Vec<Event>,
-) {
-    let mut zone_ids: BTreeSet<String> = logical_inside.iter().cloned().collect();
-    zone_ids.extend(physical_inside.iter().cloned());
-    zone_ids.extend(enter_pending.keys().cloned());
-    zone_ids.extend(exit_pending.keys().cloned());
-
-    for z in zone_ids {
-        let dwell = dwell_by_id.get(&z).cloned().unwrap_or_default();
-        let min_in = dwell.min_inside_ms.unwrap_or(0);
-        let min_out = dwell.min_outside_ms.unwrap_or(0);
-        let phys = physical_inside.contains(&z);
-        let log = logical_inside.contains(&z);
-
-        if phys && log {
-            enter_pending.remove(&z);
-            exit_pending.remove(&z);
-            continue;
-        }
-
-        if phys && !log {
-            exit_pending.remove(&z);
-            if min_in == 0 {
-                logical_inside.insert(z.clone());
-                enter_pending.remove(&z);
-                out.push(Event::EnterCorridor {
-                    id: entity_id.to_string(),
-                    corridor: z.clone(),
-                    t_ms: at_ms,
-                });
-            } else {
-                match enter_pending.get(&z).copied() {
-                    None => {
-                        enter_pending.insert(z.clone(), at_ms);
-                    }
-                    Some(t0) if at_ms.saturating_sub(t0) >= min_in => {
-                        logical_inside.insert(z.clone());
-                        enter_pending.remove(&z);
-                        out.push(Event::EnterCorridor {
-                            id: entity_id.to_string(),
-                            corridor: z.clone(),
-                            t_ms: at_ms,
-                        });
-                    }
-                    Some(_) => {}
-                }
-            }
-            continue;
-        }
-
-        if !phys && log {
-            enter_pending.remove(&z);
-            if min_out == 0 {
-                logical_inside.remove(&z);
-                exit_pending.remove(&z);
-                out.push(Event::ExitCorridor {
-                    id: entity_id.to_string(),
-                    corridor: z.clone(),
-                    t_ms: at_ms,
-                });
-            } else {
-                match exit_pending.get(&z).copied() {
-                    None => {
-                        exit_pending.insert(z.clone(), at_ms);
-                    }
-                    Some(t0) if at_ms.saturating_sub(t0) >= min_out => {
-                        logical_inside.remove(&z);
-                        exit_pending.remove(&z);
-                        out.push(Event::ExitCorridor {
-                            id: entity_id.to_string(),
-                            corridor: z.clone(),
-                            t_ms: at_ms,
-                        });
-                    }
-                    Some(_) => {}
-                }
-            }
-            continue;
-        }
-
-        enter_pending.remove(&z);
-        exit_pending.remove(&z);
-    }
-}
-
 /// Stable ordering: entity id, observation time, tier, zone id, enter/approach before exit/recede.
 pub fn sort_events_deterministic(events: &mut [Event]) {
     events.sort_by(|a, b| event_ord_key(a).cmp(&event_ord_key(b)));
@@ -378,9 +231,8 @@ pub fn sort_events_deterministic(events: &mut [Event]) {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum EventTier {
     Geofence = 0,
-    Corridor = 1,
-    Radius = 2,
-    Assignment = 3,
+    Radius = 1,
+    Assignment = 2,
 }
 
 fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
@@ -397,20 +249,6 @@ fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
             *t_ms,
             EventTier::Geofence,
             geofence.as_str(),
-            1,
-        ),
-        Event::EnterCorridor { id, corridor, t_ms } => (
-            id.as_str(),
-            *t_ms,
-            EventTier::Corridor,
-            corridor.as_str(),
-            0,
-        ),
-        Event::ExitCorridor { id, corridor, t_ms } => (
-            id.as_str(),
-            *t_ms,
-            EventTier::Corridor,
-            corridor.as_str(),
             1,
         ),
         Event::Approach { id, zone, t_ms } => {
@@ -579,139 +417,4 @@ mod tests {
         assert!(ep.is_empty());
     }
 
-    // --- corridor_membership_with_dwell tests ---
-
-    #[test]
-    fn corridor_dwell_min_inside_delays_enter() {
-        let mut dwell = HashMap::new();
-        dwell.insert(
-            "c".into(),
-            CorridorDwell {
-                min_inside_ms: Some(100),
-                min_outside_ms: None,
-            },
-        );
-        let phys: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut log = BTreeSet::new();
-        let mut ep = HashMap::new();
-        let mut xp = HashMap::new();
-        let mut out = Vec::new();
-
-        corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
-        assert!(out.is_empty());
-        assert!(!log.contains("c"));
-
-        corridor_membership_with_dwell(
-            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert!(out.is_empty());
-
-        corridor_membership_with_dwell(
-            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert_eq!(out.len(), 1);
-        assert!(matches!(
-            &out[0],
-            Event::EnterCorridor { corridor, t_ms: 100, .. } if corridor == "c"
-        ));
-        assert!(log.contains("c"));
-    }
-
-    #[test]
-    fn corridor_dwell_min_outside_delays_exit() {
-        let mut dwell = HashMap::new();
-        dwell.insert(
-            "c".into(),
-            CorridorDwell {
-                min_inside_ms: None,
-                min_outside_ms: Some(100),
-            },
-        );
-        let mut phys: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut log: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut ep = HashMap::new();
-        let mut xp = HashMap::new();
-        let mut out = Vec::new();
-
-        corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
-        assert!(out.is_empty());
-
-        phys.clear();
-        corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
-        assert!(out.is_empty());
-        assert!(log.contains("c"));
-
-        corridor_membership_with_dwell(
-            "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert_eq!(out.len(), 1);
-        assert!(matches!(
-            &out[0],
-            Event::ExitCorridor { corridor, t_ms: 100, .. } if corridor == "c"
-        ));
-        assert!(!log.contains("c"));
-    }
-
-    #[test]
-    fn corridor_dwell_cancel_enter_on_bounce() {
-        let mut dwell = HashMap::new();
-        dwell.insert(
-            "c".into(),
-            CorridorDwell {
-                min_inside_ms: Some(100),
-                min_outside_ms: None,
-            },
-        );
-        let mut phys: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut log = BTreeSet::new();
-        let mut ep = HashMap::new();
-        let mut xp = HashMap::new();
-        let mut out = Vec::new();
-
-        corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
-        phys.clear();
-        corridor_membership_with_dwell(
-            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert!(out.is_empty());
-        assert!(ep.is_empty());
-    }
-
-    #[test]
-    fn corridor_dwell_cancel_exit_on_bounce() {
-        let mut dwell = HashMap::new();
-        dwell.insert(
-            "c".into(),
-            CorridorDwell {
-                min_inside_ms: None,
-                min_outside_ms: Some(100),
-            },
-        );
-        let mut phys: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut log: BTreeSet<String> = ["c".into()].into_iter().collect();
-        let mut ep = HashMap::new();
-        let mut xp = HashMap::new();
-        let mut out = Vec::new();
-
-        // Still inside — steady state, no events.
-        corridor_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
-        assert!(out.is_empty());
-
-        // Exit: starts exit_pending.
-        phys.clear();
-        corridor_membership_with_dwell(
-            "e", 10, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert!(out.is_empty());
-        assert!(xp.contains_key("c"));
-
-        // Re-enter before threshold: exit pending is cancelled, still logically inside.
-        phys.insert("c".into());
-        corridor_membership_with_dwell(
-            "e", 20, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
-        assert!(out.is_empty());
-        assert!(xp.is_empty());
-        assert!(log.contains("c"));
-    }
 }

@@ -1,5 +1,4 @@
 {"type":"register_geofence","id":"fence-a","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}
-{"type":"register_corridor","id":"corridor-a","polygon":{"type":"Polygon","coordinates":[[[2,0],[4,0],[4,0.3],[2,0.3],[2,0]]]}}
 {"type":"register_catalog_region","id":"cat-z","polygon":{"type":"Polygon","coordinates":[[[0,0],[5,0],[5,5],[0,5],[0,0]]]}}
 {"type":"register_catalog_region","id":"cat-a","polygon":{"type":"Polygon","coordinates":[[[0,0],[5,0],[5,5],[0,5],[0,0]]]}}
 {"type":"register_radius","id":"rad-1","center":[10,10],"radius":2}

@@ -11,7 +11,7 @@ This document is the canonical reference for past, present, and future developme
 - `GeoEngine` trait: zone registration + `process_event(PointUpdate) -> Vec<Event>`
 - `Engine::process_batch`: sort by `(id, t_ms)` → process each → `sort_events_deterministic`
 - `SpatialRule` trait: composable, ordered pipeline of spatial checks per update
-- Default pipeline: `GeofenceRule → CorridorRule → RadiusRule → CatalogRule`
+- Default pipeline: `GeofenceRule → RadiusRule → CatalogRule`
 - `Engine::with_rules`: custom rule sets per deployment
 - `geofence_dwell`: per-fence `min_inside_ms` / `min_outside_ms` with pending-map cancellation on bounce-back
 
@@ -20,13 +20,12 @@ This document is the canonical reference for past, present, and future developme
 | Zone | Events emitted | Index |
 |------|---------------|-------|
 | Geofence (polygon) | `Enter` / `Exit` | R-tree (bounding box) + exact point-in-polygon |
-| Corridor (polygon layer) | `EnterCorridor` / `ExitCorridor` | R-tree |
 | Catalog region (polygon layer) | `AssignmentChanged` (lex-smallest containing region) | R-tree |
-| Radius zone (disk) | `Approach` / `Recede` | Linear scan |
+| Radius zone (disk) | `Approach` / `Recede` | R-tree |
 
 ### State
 
-- Per-entity `EntityState`: position, last timestamp, geofence membership (`inside`), corridor membership, radius membership, catalog assignment
+- Per-entity `EntityState`: position, last timestamp, geofence membership (`inside`), radius membership, catalog assignment
 - Dwell pending maps (`geofence_enter_pending`, `geofence_exit_pending`) cancel on bounce-back before threshold elapses
 - `sort_events_deterministic`: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
 
@@ -78,10 +77,10 @@ Point-in-polygon only tests the exterior ring. A point inside a hole of a regist
 ### Medium priority
 
 **5. Zone ID uniqueness is global across all types**
-A geofence and a corridor cannot share the same ID even though they are distinct concepts. This is surprising to users who naturally namespace by type. Either: (a) document this strongly and enforce at the API surface with a clear error, or (b) make IDs scoped per zone type and update the wire protocol accordingly.
+A geofence and a radius zone or catalog region cannot share the same ID. Either: (a) document this strongly and enforce at the API surface with a clear error, or (b) make IDs scoped per zone type and update the wire protocol accordingly.
 
 **6. Dwell / debounce is geofence-only**
-Corridors, radius zones, and catalog regions have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near corridor boundaries causes flapping in the same way as near geofence boundaries. At minimum corridors should get dwell support.
+Radius zones and catalog regions have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near zone boundaries causes flapping in the same way as near geofence boundaries.
 
 **7. `polygon-json` is a 30-line utility that does not need to be its own crate**
 It could live in `crates/spatial` since it is purely a geometry helper. Reduces workspace overhead.
@@ -95,7 +94,7 @@ The cross-type duplicate ID error is not exercised in any test.
 What happens when two updates for the same entity arrive with the same `t_ms`? The behavior is currently unspecified.
 
 **10. `membership_scratch` swap pattern is hard to follow**
-`CorridorRule` and `RadiusRule` use `std::mem::swap` to move new state into entity state and hand old state back to scratch. This is efficient but subtle. A comment explaining the invariant would prevent future regressions.
+`RadiusRule` uses `std::mem::swap` to move new state into entity state and hand old state back to scratch. This is efficient but subtle. A comment explaining the invariant would prevent future regressions.
 
 ---
 
@@ -109,7 +108,6 @@ These define what a stable, reliable v1 looks like.
 - [x] Implement R-tree spatial index for radius zones
 - [x] Handle polygon holes correctly in point-in-polygon
 - [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
-- [x] Add dwell / debounce support for corridors
 - [x] Resolve zone ID scoping (global vs per-type); update protocol if changed
 - [x] Merge `polygon-json` into `crates/spatial`
 - [ ] Add missing tests (cross-type duplicate IDs, timestamp edge cases)

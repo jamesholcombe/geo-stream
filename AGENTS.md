@@ -136,7 +136,7 @@ The spatial crate **must**:
 - Support efficient point → region lookup.
 - Avoid full scans where an index applies.
 
-**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for geofences, corridors, and catalog regions. **Radius zones** are a linear scan over registered disks. Zones are registered incrementally (per insert), not rebuilt each update.
+**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for geofences and catalog regions. **Radius zones** are also R-tree indexed. Zones are registered incrementally (per insert), not rebuilt each update.
 
 ### 6. Protocol is a contract
 
@@ -206,9 +206,9 @@ These differ from the target model above; adapters and tests should match **what
 - Input update: `PointUpdate { id, x, y, t_ms }` (Unix epoch milliseconds). Wire JSON field `t` in adapters.
 - Concrete type: `Engine` backed by `spatial::NaiveSpatialIndex` and `HashMap<String, EntityState>`.
 
-**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `EnterCorridor` / `ExitCorridor`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog); each variant includes **`t_ms`** (same as the causing `PointUpdate`). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
+**Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog); each variant includes **`t_ms`** (same as the causing `PointUpdate`). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
 
-**Per-entity state** (`crates/state`): `EntityState` holds `position`, `last_t_ms`, geofence membership plus **`geofence_enter_pending` / `geofence_exit_pending`** (dwell timers), corridor/radius sets, and `catalog_region`.
+**Per-entity state** (`crates/state`): `EntityState` holds `position`, `last_t_ms`, geofence membership plus **`geofence_enter_pending` / `geofence_exit_pending`** (dwell timers), radius set, and `catalog_region`.
 
 **Supporting crate:** `crates/polygon-json` parses GeoJSON polygons for HTTP and stdin-stdout adapters (not used inside `crates/engine`).
 
@@ -227,9 +227,9 @@ Event → Engine → Rules → State transition → Output events
 The project currently:
 
 - **API:** `process_event` is primary; **`process_batch`** for buffered NDJSON/HTTP batches. CLI defaults `batch_size` to 1 (one `process_batch` per update line).
-- **Zone kinds:** Geofences (enter/exit), corridors (corridor enter/exit), catalog regions (assignment / tie-break by smallest id), radius zones (approach/recede).
+- **Zone kinds:** Geofences (enter/exit), catalog regions (assignment / tie-break by smallest id), radius zones (approach/recede).
 - **Spatial:** `SpatialIndex` trait exists; `NaiveSpatialIndex` implements R-tree–accelerated polygon queries plus linear radius checks.
-- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → corridor → radius → catalog).
+- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → radius → catalog).
 - **Adapters:** stdin-stdout and HTTP call **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
 - **Protocol:** NDJSON wire contract under `protocol/ndjson.md` (pre-release).
 
