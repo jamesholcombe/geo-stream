@@ -194,15 +194,6 @@ impl NaiveSpatialIndex {
         Self::default()
     }
 
-    fn id_exists(&self, id: &str) -> bool {
-        self.fences
-            .iter()
-            .chain(self.corridors.iter())
-            .chain(self.catalog.iter())
-            .any(|g| g.id == id)
-            || self.radius_zones.iter().any(|z| z.id == id)
-    }
-
     /// Register a geofence (enter/exit events).
     pub fn try_push(&mut self, fence: Geofence) -> Result<(), SpatialError> {
         self.try_push_geofence(fence)
@@ -210,7 +201,7 @@ impl NaiveSpatialIndex {
 
     pub fn try_push_geofence(&mut self, fence: Geofence) -> Result<(), SpatialError> {
         validate_polygon(&fence.polygon)?;
-        if self.id_exists(&fence.id) {
+        if self.fences.iter().any(|f| f.id == fence.id) {
             return Err(SpatialError::DuplicateZoneId(fence.id.clone()));
         }
         let env = polygon_aabb(&fence.polygon)?;
@@ -226,7 +217,7 @@ impl NaiveSpatialIndex {
     /// Register a corridor as a pre-buffered polygon (`enter_corridor` / `exit_corridor` events).
     pub fn try_push_corridor(&mut self, corridor: Geofence) -> Result<(), SpatialError> {
         validate_polygon(&corridor.polygon)?;
-        if self.id_exists(&corridor.id) {
+        if self.corridors.iter().any(|c| c.id == corridor.id) {
             return Err(SpatialError::DuplicateZoneId(corridor.id.clone()));
         }
         let env = polygon_aabb(&corridor.polygon)?;
@@ -242,7 +233,7 @@ impl NaiveSpatialIndex {
     /// Register a catalog region (`assignment_changed` events; tie-break: lexicographically smallest id).
     pub fn try_push_catalog_region(&mut self, region: Geofence) -> Result<(), SpatialError> {
         validate_polygon(&region.polygon)?;
-        if self.id_exists(&region.id) {
+        if self.catalog.iter().any(|r| r.id == region.id) {
             return Err(SpatialError::DuplicateZoneId(region.id.clone()));
         }
         let env = polygon_aabb(&region.polygon)?;
@@ -262,7 +253,7 @@ impl NaiveSpatialIndex {
         if !zone.cx.is_finite() || !zone.cy.is_finite() {
             return Err(SpatialError::InvalidRadius);
         }
-        if self.id_exists(&zone.id) {
+        if self.radius_zones.iter().any(|z| z.id == zone.id) {
             return Err(SpatialError::DuplicateZoneId(zone.id.clone()));
         }
         let envelope = radius_aabb(zone.cx, zone.cy, zone.r);
@@ -571,23 +562,72 @@ mod tests {
         assert_eq!(idx.primary_catalog_at((50.0, 5.0)), None);
     }
 
+    // Zone IDs are scoped per type: the same ID may be reused across different zone types.
+
     #[test]
-    fn duplicate_id_across_kinds_rejected() {
+    fn same_id_across_zone_types_is_allowed() {
         let mut idx = NaiveSpatialIndex::new();
+        // Register a geofence with id "x".
         idx.try_push(Geofence {
             id: "x".into(),
             polygon: square(),
         })
         .unwrap();
+        // Same id "x" in a radius zone — different type, must succeed.
+        idx.try_push_radius_zone(RadiusZone {
+            id: "x".into(),
+            cx: 0.0,
+            cy: 0.0,
+            r: 1.0,
+        })
+        .unwrap();
+        // Same id "x" as a corridor — must also succeed.
+        idx.try_push_corridor(Geofence {
+            id: "x".into(),
+            polygon: square(),
+        })
+        .unwrap();
+        // Same id "x" as a catalog region — must also succeed.
+        idx.try_push_catalog_region(Geofence {
+            id: "x".into(),
+            polygon: square(),
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn duplicate_id_within_same_type_rejected() {
+        let mut idx = NaiveSpatialIndex::new();
+        idx.try_push_geofence(Geofence {
+            id: "dup".into(),
+            polygon: square(),
+        })
+        .unwrap();
         let err = idx
-            .try_push_radius_zone(RadiusZone {
-                id: "x".into(),
-                cx: 0.0,
-                cy: 0.0,
-                r: 1.0,
+            .try_push_geofence(Geofence {
+                id: "dup".into(),
+                polygon: square(),
             })
             .unwrap_err();
         assert!(matches!(err, SpatialError::DuplicateZoneId(_)));
+
+        let mut idx2 = NaiveSpatialIndex::new();
+        idx2.try_push_radius_zone(RadiusZone {
+            id: "dup".into(),
+            cx: 0.0,
+            cy: 0.0,
+            r: 1.0,
+        })
+        .unwrap();
+        let err2 = idx2
+            .try_push_radius_zone(RadiusZone {
+                id: "dup".into(),
+                cx: 5.0,
+                cy: 5.0,
+                r: 2.0,
+            })
+            .unwrap_err();
+        assert!(matches!(err2, SpatialError::DuplicateZoneId(_)));
     }
 
     #[test]
