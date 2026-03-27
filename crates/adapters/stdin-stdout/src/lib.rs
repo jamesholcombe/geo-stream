@@ -1,7 +1,7 @@
 //! Newline-delimited JSON over stdin/stdout; parses NDJSON input lines and drives [`engine::Engine`].
 
 use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
-use polygon_json::polygon_from_json_value;
+use spatial::polygon_from_json_value;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, BufRead, Write};

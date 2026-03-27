@@ -611,9 +611,9 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
- "polygon-json",
  "serde",
  "serde_json",
+ "spatial",
 ]
 
 [[package]]
@@ -773,9 +773,9 @@ dependencies = [
  "axum",
  "engine",
  "geo",
- "polygon-json",
  "serde",
  "serde_json",
+ "spatial",
  "tokio",
  "tower",
  "tower-http",
@@ -1153,16 +1153,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polygon-json"
-version = "0.1.0"
-dependencies = [
- "geo",
- "geojson",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1458,7 +1448,9 @@ name = "spatial"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "geojson",
  "rstar 0.12.2",
+ "serde_json",
  "thiserror",
 ]
 
@@ -1486,9 +1478,9 @@ name = "stdin-stdout"
 version = "0.1.0"
 dependencies = [
  "engine",
- "polygon-json",
  "serde",
  "serde_json",
+ "spatial",
  "thiserror",
 ]
 
