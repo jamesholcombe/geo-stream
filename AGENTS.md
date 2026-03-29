@@ -23,7 +23,7 @@ Instructions for humans and **automated coding agents** working in this reposito
 
 - New rule or orchestration → `crates/engine` (and traits/types as appropriate in `crates/state` / `crates/spatial`).
 - New geometry or index behaviour → `crates/spatial` (no domain “business” rules).
-- New wire format or HTTP/stdio handling → `crates/adapters/*` or `crates/cli`, plus `protocol/` docs if the contract changes.
+- New wire format or stdio handling → `crates/adapters/*` or `crates/cli`, plus `protocol/` docs if the contract changes.
 - Shared state shape or transitions → `crates/state`.
 
 **Workspace layout (actual paths):**
@@ -34,7 +34,6 @@ crates/engine/             # event processing, rules orchestration
 crates/state/              # entity state, transitions
 crates/spatial/            # geometry, SpatialIndex, no business rules
 crates/polygon-json/       # supporting crate (JSON polygons)
-crates/adapters/http/      # HTTP adapter
 crates/adapters/stdin-stdout/
 crates/cli/                # CLI entrypoint
 protocol/                  # NDJSON contract: ndjson.md, ROADMAP.md, schema/
@@ -229,8 +228,8 @@ The project currently:
 - **API:** `process_event` is primary; **`process_batch`** for buffered NDJSON/HTTP batches. CLI defaults `batch_size` to 1 (one `process_batch` per update line).
 - **Zone kinds:** Geofences (enter/exit), catalog regions (assignment / tie-break by smallest id), radius zones (approach/recede).
 - **Spatial:** `SpatialIndex` trait exists; `NaiveSpatialIndex` implements R-tree–accelerated polygon queries plus linear radius checks.
-- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → radius → catalog).
-- **Adapters:** stdin-stdout and HTTP call **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
+- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → corridor → radius → catalog).
+- **Adapters:** stdin-stdout calls **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
 - **Protocol:** NDJSON wire contract under `protocol/ndjson.md` (pre-release).
 
 **Known gap:** Optional non-`Engine` adapter generics if needed. JSON Schema for NDJSON and HTTP wire shapes lives under `protocol/schema/` (see `protocol/schema/README.md`).

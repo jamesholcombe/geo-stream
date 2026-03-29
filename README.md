@@ -31,7 +31,7 @@ location update → └──────────────────┘
 - **Polygon holes** — GeoJSON polygons with interior rings are supported natively
 - **Typed events** — discriminated union `GeoEvent` with full TypeScript inference
 - **Native performance** — Rust R-tree spatial index; no JS overhead on the hot path
-- **Embeddable** — use as a Node.js package, a Rust crate, an NDJSON CLI, or over HTTP
+- **Embeddable** — use as a Node.js package, a Rust crate, or an NDJSON CLI
 
 ---
 
@@ -212,29 +212,6 @@ Full protocol spec: [`protocol/ndjson.md`](protocol/ndjson.md).
 </details>
 
 <details>
-<summary><strong>HTTP adapter (Axum)</strong></summary>
-
-```bash
-cargo build -p cli --features http --bin geo-stream-http
-./target/debug/geo-stream-http --listen 0.0.0.0:8080
-```
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | `{"status":"ok"}` |
-| `GET` | `/openapi.json` | OpenAPI 3 spec |
-| `POST` | `/v1/register_geofence` | Register a polygon geofence |
-| `POST` | `/v1/register_catalog_region` | Register a catalog region |
-| `POST` | `/v1/register_radius` | Register a radius zone |
-| `POST` | `/v1/ingest` | `{"updates":[...]}` → events |
-
-Errors: `{"error":{"code":"<stable_code>","message":"..."}}` with appropriate HTTP status.
-
-Set `RUST_LOG=info` for request tracing.
-
-</details>
-
-<details>
 <summary><strong>Rust crate</strong></summary>
 
 ```rust
@@ -281,8 +258,7 @@ docker run --rm -i geo-stream < examples/sample-input.ndjson
 | `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree |
 | `crates/state` | `EntityState`, `Event` enum |
 | `crates/adapters/stdin-stdout` | NDJSON CLI adapter |
-| `crates/adapters/http` | Axum HTTP adapter (feature-gated) |
-| `crates/cli` | `geo-stream` / `geo-stream-http` binaries |
+| `crates/cli` | `geo-stream` binary |
 | `protocol/` | NDJSON wire spec and JSON Schema |
 | `examples/` | Sample NDJSON, GeoJSON, and TypeScript scripts |
 

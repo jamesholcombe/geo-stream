@@ -18,9 +18,8 @@ crates/state/                # EntityState, Event enum, membership transitions
 crates/spatial/              # Geometry, SpatialIndex trait, NaiveSpatialIndex (R-tree)
 crates/polygon-json/         # GeoJSON polygon parsing helper (30-line utility)
 crates/adapters/stdin-stdout/ # NDJSON line I/O
-crates/adapters/http/        # Axum HTTP adapter (feature-gated)
 crates/adapters/napi/        # Node.js NAPI bindings (feature-gated)
-crates/cli/                  # geo-stream / geo-stream-http binaries
+crates/cli/                  # geo-stream binary
 protocol/                    # Wire contract: ndjson.md + schema/
 examples/                    # Sample NDJSON and GeoJSON files
 ```
@@ -31,7 +30,7 @@ examples/                    # Sample NDJSON and GeoJSON files
 |------|-------|
 | New rule or orchestration | `crates/engine` |
 | New geometry or index behaviour | `crates/spatial` (no domain rules) |
-| New wire format or HTTP/stdio handling | `crates/adapters/*` or `crates/cli`, update `protocol/` if contract changes |
+| New wire format or stdio handling | `crates/adapters/*` or `crates/cli`, update `protocol/` if contract changes |
 | Shared state shape or transitions | `crates/state` |
 
 ---
@@ -69,7 +68,6 @@ cargo bench -p engine                # Criterion benchmarks (output: target/crit
 cargo fmt --all                      # format
 cargo clippy --workspace --all-targets -- -D warnings   # lint (CI enforces -D warnings)
 make run                             # pipe examples/sample-input.ndjson through CLI
-make build-http                      # build HTTP variant
 make docker-build                    # multi-stage Docker image
 ```
 

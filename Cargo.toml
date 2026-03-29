@@ -5,7 +5,6 @@ members = [
   "crates/state",
   "crates/engine",
   "crates/adapters/stdin-stdout",
-  "crates/adapters/http",
   "crates/adapters/napi",
   "crates/cli",
 ]

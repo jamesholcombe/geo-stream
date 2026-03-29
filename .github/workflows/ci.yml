@@ -48,6 +48,3 @@ jobs:
               echo "$line" | python -m check_jsonschema --schemafile "$SCHEMA" -
             done < "$f"
           done
-
-      - name: Build HTTP binary
-        run: cargo build -p cli --features http --bin geo-stream-http
