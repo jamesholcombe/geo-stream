@@ -1,5 +1,5 @@
 {
-  "name": "geo-stream-linux-arm64-gnu",
+  "name": "@jamesholcombe/geo-stream-linux-arm64-gnu",
   "version": "0.1.0",
   "os": ["linux"],
   "cpu": ["arm64"],

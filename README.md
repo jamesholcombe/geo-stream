@@ -38,7 +38,7 @@ location update → └──────────────────┘
 ## Installation
 
 ```bash
-npm install geo-stream
+npm install @jamesholcombe/geo-stream
 ```
 
 Pre-built native binaries are distributed for all supported platforms — no Rust toolchain required.
@@ -58,7 +58,7 @@ Pre-built native binaries are distributed for all supported platforms — no Rus
 ## Quick start
 
 ```typescript
-import { GeoEngine } from 'geo-stream'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
