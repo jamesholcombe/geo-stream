@@ -105,7 +105,7 @@ jobs:
       # into the root package.json so consumers get the right binary on install.
       # --skip-gh-release: we manage GitHub releases via git tags, not napi.
       - name: Prepare platform packages (napi prepublish)
-        run: npx napi prepublish -t npm --skip-gh-release
+        run: npx napi prepublish -t npm --no-gh-release
         working-directory: crates/adapters/napi
 
       # Compile types.ts → types.js + types.d.ts (also run by prepublishOnly hook)
