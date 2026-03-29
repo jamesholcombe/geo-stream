@@ -1,0 +1,14 @@
+{
+  "name": "geo-stream-linux-arm64-gnu",
+  "version": "0.1.0",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "main": "geo_events.linux-arm64-gnu.node",
+  "files": ["geo_events.linux-arm64-gnu.node"],
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamesholcombe/geo-stream"
+  }
+}

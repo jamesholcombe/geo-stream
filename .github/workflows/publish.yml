@@ -89,70 +89,27 @@ jobs:
         with:
           path: crates/adapters/napi/artifacts
 
-      # Pre-create every platform directory so that `napi artifacts` (which writes
-      # all five platforms concurrently via Promise.all) never races to create the
-      # shared `npm/` parent at the same time as a sibling directory.
-      - name: Create npm platform directories
-        run: mkdir -p npm/darwin-arm64 npm/darwin-x64 npm/linux-x64-gnu npm/linux-arm64-gnu npm/win32-x64-msvc
-        working-directory: crates/adapters/napi
-
-      # napi artifacts copies each *.node into npm/<platform>/
+      # napi artifacts copies each *.node into the committed npm/<platform>/ stubs.
+      # The npm/ platform directories and their package.json files are committed;
+      # only the *.node binaries are gitignored and populated here at publish time.
       - name: Organise artifacts
         run: npx napi artifacts --build-output-dir artifacts
         working-directory: crates/adapters/napi
 
-      # Generate npm/<platform>/package.json stubs and inject optionalDependencies
-      # into the root package.json. Done manually to avoid napi prepublish's
-      # opinionated side-effects (GitHub release creation, internal npm publish).
-      - name: Generate platform package stubs
-        working-directory: crates/adapters/napi
-        run: |
-          node - <<'EOF'
-          const fs = require('fs')
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-          const { version, license } = pkg
-
-          const platforms = [
-            { dir: 'darwin-arm64',   os: 'darwin', cpu: 'arm64' },
-            { dir: 'darwin-x64',     os: 'darwin', cpu: 'x64'   },
-            { dir: 'linux-x64-gnu',  os: 'linux',  cpu: 'x64'   },
-            { dir: 'linux-arm64-gnu',os: 'linux',  cpu: 'arm64' },
-            { dir: 'win32-x64-msvc', os: 'win32',  cpu: 'x64'   },
-          ]
-
-          const optionalDeps = {}
-          for (const { dir, os, cpu } of platforms) {
-            const name = `geo-stream-${dir}`
-            const nodeFile = `geo_events.${dir}.node`
-            fs.writeFileSync(`npm/${dir}/package.json`, JSON.stringify({
-              name, version, license,
-              os: [os], cpu: [cpu],
-              main: nodeFile,
-              files: [nodeFile],
-              engines: { node: '>=18' },
-            }, null, 2) + '\n')
-            optionalDeps[name] = version
-          }
-
-          pkg.optionalDependencies = optionalDeps
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
-          console.log('Platform stubs written and optionalDependencies updated.')
-          EOF
-
-      # Compile types.ts → types.js + types.d.ts (also run by prepublishOnly hook)
-      - name: Compile TypeScript
-        run: npx tsc
-        working-directory: crates/adapters/napi
-
-      # Publish each platform stub package first (e.g. geo-stream-darwin-arm64)
-      - name: Publish platform packages
-        run: |
-          for dir in npm/*/; do
-            npm publish "$dir" --access public
-          done
+      # napi pre-publish: updates version in each npm/<platform>/package.json,
+      # injects optionalDependencies into the root package.json, and publishes
+      # each platform package to npm.
+      - name: Pre-publish (platform packages)
+        run: npx napi pre-publish -t npm --no-gh-release
         working-directory: crates/adapters/napi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Compile types.ts → types.js + types.d.ts
+      - name: Compile TypeScript
+        run: npx tsc
+        working-directory: crates/adapters/napi
 
       # Publish the root package last (depends on platform packages being live)
       - name: Publish root package
