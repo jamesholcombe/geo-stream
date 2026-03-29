@@ -5,7 +5,6 @@
 
 CLI_PKG   := cli
 CLI_BIN   := geo-stream
-HTTP_BIN  := geo-stream-http
 NAPI_DIR  := crates/adapters/napi
 SAMPLE    := examples/sample-input.ndjson
 IMAGE     := geo-stream
@@ -64,14 +63,6 @@ run: ## Run CLI on examples/sample-input.ndjson
 .PHONY: run-batch
 run-batch: ## Run CLI with --batch-size 0 on sample input
 	cargo run -p $(CLI_PKG) --bin $(CLI_BIN) -- --batch-size 0 -- < $(SAMPLE)
-
-.PHONY: build-http
-build-http: ## Build HTTP adapter binary (debug)
-	cargo build -p $(CLI_PKG) --features http --bin $(HTTP_BIN)
-
-.PHONY: run-http
-run-http: build-http ## Run HTTP server on 0.0.0.0:8080 (debug build)
-	./target/debug/$(HTTP_BIN) --listen 0.0.0.0:8080
 
 .PHONY: napi-install
 napi-install: ## Install npm dependencies for the NAPI adapter

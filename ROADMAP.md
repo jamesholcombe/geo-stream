@@ -32,7 +32,6 @@ This document is the canonical reference for past, present, and future developme
 ### Adapters
 
 - **stdin-stdout**: NDJSON line-by-line, batching strategies (`--batch-size N`)
-- **HTTP** (optional `http` feature): Axum server, `/v1/{register_*,ingest}`, `GET /health`, `GET /openapi.json`
 - **Protocol**: NDJSON wire contract at `protocol/ndjson.md`, JSON Schema under `protocol/schema/`
 
 ### Crate structure
@@ -43,8 +42,7 @@ crates/state/           — EntityState, Event enum, membership transitions
 crates/spatial/         — Geofence, RadiusZone, NaiveSpatialIndex (R-tree)
 crates/polygon-json/    — GeoJSON polygon parsing helper
 crates/adapters/stdin-stdout/
-crates/adapters/http/
-crates/cli/             — geo-stream, geo-stream-http binaries
+crates/cli/             — geo-stream binary
 ```
 
 ### Tooling
@@ -134,7 +132,7 @@ These make geo-stream useful beyond direct Rust embedding.
 
 ### Client SDKs
 
-- [x] **TypeScript/Node.js SDK** (high priority): wrap the CLI subprocess or HTTP adapter; typed event types; async iterator interface
+- [x] **TypeScript/Node.js SDK** (high priority): NAPI bindings; typed event types; async iterator interface
 - [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
 
 ### Zone management
@@ -175,7 +173,7 @@ A developer-first, embeddable geospatial stream processor that can run:
 
 - **In-process** as a Rust library crate
 - **As a subprocess** via NDJSON stdin/stdout from any language
-- **As a sidecar** over HTTP, called by application services
+- **Embedded in Node.js** via NAPI bindings (HTTP serving handled by the TypeScript layer)
 - **As a stream processor** consuming from Kafka or Redis Streams
 
 The goal is that a developer should be able to add geofencing to any application — regardless of language, infrastructure, or scale — without needing PostGIS, Flink, or a dedicated GIS team.

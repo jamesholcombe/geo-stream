@@ -139,13 +139,3 @@ docker build -f docker/Dockerfile -t geo-stream .
 docker run --rm -i geo-stream < examples/sample-input.ndjson
 ```
 
-## HTTP adapter (optional)
-
-See [`ROADMAP.md`](ROADMAP.md). The optional `http` adapter exposes JSON endpoints for the same engine; that is **separate** from this NDJSON process contract.
-
-| Endpoint | Body shape |
-|----------|------------|
-| `POST /v1/register_geofence` | `{"id":"...","polygon":{ GeoJSON Polygon }}` |
-| `POST /v1/register_catalog_region` | same |
-| `POST /v1/register_radius` | `{"id":"...","cx":0,"cy":0,"r":1.5}` |
-| `POST /v1/ingest` | `{"updates":[...]}`; response events match the stdout event shapes above (HTTP may omit some optional fields where serde skips them). |

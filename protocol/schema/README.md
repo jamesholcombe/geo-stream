@@ -1,6 +1,6 @@
 # Protocol JSON Schema (draft 2020-12)
 
-Machine-readable shapes for what this repository **accepts and serializes** today: NDJSON stdin/stdout/stderr lines (CLI `geo-stream`) and HTTP JSON bodies. They mirror the serde types in `crates/adapters/stdin-stdout` and `crates/adapters/http`. Human-readable contract: [`protocol/ndjson.md`](../ndjson.md).
+Machine-readable shapes for what this repository **accepts and serializes** today: NDJSON stdin/stdout/stderr lines (CLI `geo-stream`). They mirror the serde types in `crates/adapters/stdin-stdout`. Human-readable contract: [`protocol/ndjson.md`](../ndjson.md).
 
 ## Files
 
@@ -10,10 +10,6 @@ Machine-readable shapes for what this repository **accepts and serializes** toda
 | `ndjson-stdin-line.schema.json` | One **stdin** input object per line (`type`-discriminated). |
 | `ndjson-stdout-line.schema.json` | One **stdout** event per line (`event`-discriminated). |
 | `ndjson-stderr-line.schema.json` | One **stderr** error object: `{ "error": string }`. |
-| `http-v1-ingest-body.schema.json` | `POST /v1/ingest` body: `{ "updates": [ … ] }`. |
-| `http-v1-register-polygon-body.schema.json` | Polygon registration bodies: `{ "id", "polygon" }`. |
-| `http-v1-register-radius-body.schema.json` | `POST /v1/register_radius` body: `{ "id", "cx", "cy", "r" }`. |
-| `http-v1-event.schema.json` | One event object in the ingest response array. `assignment_changed` may **omit** `region` when unset (matches HTTP `skip_serializing_if`). |
 
 ## NDJSON
 
