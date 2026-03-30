@@ -1,10 +1,8 @@
 name: Publish to npm
 
-# Trigger on version tags (e.g. v0.2.0) or manually via the Actions UI.
-# Before pushing a tag, bump the version in both:
-#   - crates/adapters/napi/package.json
-#   - crates/adapters/napi/Cargo.toml
-# Then: git tag v<version> && git push origin v<version>
+# Triggered automatically when CI pushes a vX.Y.Z tag after a version bump.
+# Can also be triggered manually via the Actions UI.
+# To release: run `make bump-patch` (or bump-minor/bump-major) then `git push`.
 on:
   push:
     tags:
@@ -66,11 +64,13 @@ jobs:
           path: crates/adapters/napi/*.node
           if-no-files-found: error
 
-  # ── 2. Collect all binaries and publish ────────────────────────────────────
+  # ── 2. Collect all binaries, publish to npm, and create GitHub release ─────
   publish:
     name: Publish
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -117,3 +117,11 @@ jobs:
         working-directory: crates/adapters/napi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

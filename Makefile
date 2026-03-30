@@ -86,6 +86,18 @@ install-hooks: ## Install git pre-commit hook (auto-formats with cargo fmt)
 	@chmod +x .git/hooks/pre-commit
 	@echo "pre-commit hook installed"
 
+.PHONY: bump-patch
+bump-patch: ## Bump patch version (0.1.1 → 0.1.2), commit and tag locally
+	@scripts/bump.sh patch
+
+.PHONY: bump-minor
+bump-minor: ## Bump minor version (0.1.1 → 0.2.0), commit and tag locally
+	@scripts/bump.sh minor
+
+.PHONY: bump-major
+bump-major: ## Bump major version (0.1.1 → 2.0.0), commit and tag locally
+	@scripts/bump.sh major
+
 .PHONY: clean
 clean: ## Remove target/ and build artifacts
 	cargo clean

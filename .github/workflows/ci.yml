@@ -48,3 +48,32 @@ jobs:
               echo "$line" | python -m check_jsonschema --schemafile "$SCHEMA" -
             done < "$f"
           done
+
+  tag-release:
+    name: Tag release
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push tag if version not yet released
+        run: |
+          VERSION=$(cat version.txt | tr -d '[:space:]')
+          TAG="v$VERSION"
+          echo "Current version: $TAG"
+          if git ls-remote --tags origin "$TAG" | grep -q .; then
+            echo "Tag $TAG already exists — skipping."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Pushed tag $TAG — publish workflow will now run."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
