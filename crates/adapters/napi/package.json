@@ -1,6 +1,6 @@
 {
   "name": "@jamesholcombe/geo-stream",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Native Node.js bindings for the geo-stream geospatial stream processor",
   "main": "index.js",
   "types": "types.d.ts",

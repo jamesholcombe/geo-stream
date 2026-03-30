@@ -18,7 +18,14 @@ help: ## List targets
 .PHONY: init
 init: install-hooks napi-install ## Bootstrap dev environment (hooks + npm deps)
 	@rustup component add rustfmt clippy 2>/dev/null || true
+	@cargo install cargo-edit 2>/dev/null || true
 	@echo "Dev environment ready. Run 'make build' to compile."
+
+.PHONY: check-prereqs
+check-prereqs: ## Check that required tools are installed
+	@command -v cargo >/dev/null || (echo "error: cargo not found"; exit 1)
+	@command -v node >/dev/null || (echo "error: node not found"; exit 1)
+	@cargo set-version --version >/dev/null 2>&1 || (echo "error: cargo-edit not installed — run: cargo install cargo-edit"; exit 1)
 
 .PHONY: build
 build: ## Build the workspace (debug)
@@ -87,15 +94,15 @@ install-hooks: ## Install git pre-commit hook (auto-formats with cargo fmt)
 	@echo "pre-commit hook installed"
 
 .PHONY: bump-patch
-bump-patch: ## Bump patch version (0.1.1 → 0.1.2), commit and tag locally
+bump-patch: check-prereqs ## Bump patch version (0.1.1 → 0.1.2), commit and tag locally
 	@scripts/bump.sh patch
 
 .PHONY: bump-minor
-bump-minor: ## Bump minor version (0.1.1 → 0.2.0), commit and tag locally
+bump-minor: check-prereqs ## Bump minor version (0.1.1 → 0.2.0), commit and tag locally
 	@scripts/bump.sh minor
 
 .PHONY: bump-major
-bump-major: ## Bump major version (0.1.1 → 2.0.0), commit and tag locally
+bump-major: check-prereqs ## Bump major version (0.1.1 → 2.0.0), commit and tag locally
 	@scripts/bump.sh major
 
 .PHONY: clean
