@@ -1,12 +1,10 @@
 name: Publish to npm
 
-# Triggered automatically when CI pushes a vX.Y.Z tag after a version bump.
-# Can also be triggered manually via the Actions UI.
+# Only triggered by CI (workflow_call after tests pass + tag created) or manually.
+# Removing push:tags trigger intentionally — unprotected tags would otherwise
+# allow anyone with push access to trigger a release without tests passing.
 # To release: run `make bump-patch` (or bump-minor/bump-major) then `git push`.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
   workflow_call:
     secrets:
