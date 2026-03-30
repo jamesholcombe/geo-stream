@@ -1,4 +1,4 @@
-use engine::{Engine, GeoEngine as _, Geofence, GeofenceDwell, PointUpdate, RadiusZone};
+use engine::{Circle, Engine, GeoEngine as _, PointUpdate, Zone, ZoneDwell};
 use napi_derive::napi;
 use serde::Serialize;
 use spatial::polygon_from_json_value;
@@ -34,22 +34,22 @@ pub struct DwellOptionsJs {
 enum EventDto {
     Enter {
         id: String,
-        geofence: String,
+        zone: String,
         t_ms: u64,
     },
     Exit {
         id: String,
-        geofence: String,
+        zone: String,
         t_ms: u64,
     },
     Approach {
         id: String,
-        zone: String,
+        circle: String,
         t_ms: u64,
     },
     Recede {
         id: String,
-        zone: String,
+        circle: String,
         t_ms: u64,
     },
     AssignmentChanged {
@@ -62,10 +62,10 @@ enum EventDto {
 impl From<engine::Event> for EventDto {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter { id, geofence, t_ms } => EventDto::Enter { id, geofence, t_ms },
-            engine::Event::Exit { id, geofence, t_ms } => EventDto::Exit { id, geofence, t_ms },
-            engine::Event::Approach { id, zone, t_ms } => EventDto::Approach { id, zone, t_ms },
-            engine::Event::Recede { id, zone, t_ms } => EventDto::Recede { id, zone, t_ms },
+            engine::Event::Enter { id, zone, t_ms } => EventDto::Enter { id, zone, t_ms },
+            engine::Event::Exit { id, zone, t_ms } => EventDto::Exit { id, zone, t_ms },
+            engine::Event::Approach { id, circle, t_ms } => EventDto::Approach { id, circle, t_ms },
+            engine::Event::Recede { id, circle, t_ms } => EventDto::Recede { id, circle, t_ms },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
                 EventDto::AssignmentChanged { id, region, t_ms }
             }
@@ -97,10 +97,10 @@ impl GeoEngineNode {
         }
     }
 
-    /// Register a named geofence from a GeoJSON Polygon object.
+    /// Register a named zone from a GeoJSON Polygon object.
     /// Optionally provide dwell thresholds to debounce enter/exit events.
     #[napi]
-    pub fn register_geofence(
+    pub fn register_zone(
         &mut self,
         id: String,
         polygon: serde_json::Value,
@@ -108,17 +108,17 @@ impl GeoEngineNode {
     ) -> napi::Result<()> {
         let poly = polygon_from_json_value(&polygon)
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        let geofence = Geofence { id, polygon: poly };
-        let dwell_config = dwell.map(|d| GeofenceDwell {
+        let zone = Zone { id, polygon: poly };
+        let dwell_config = dwell.map(|d| ZoneDwell {
             min_inside_ms: d.min_inside_ms.map(|v| v as u64),
             min_outside_ms: d.min_outside_ms.map(|v| v as u64),
         });
         match dwell_config {
             Some(dwell_cfg) => self
                 .inner
-                .register_geofence_with_dwell(geofence, dwell_cfg)
+                .register_zone_with_dwell(zone, dwell_cfg)
                 .map_err(engine_err),
-            None => self.inner.register_geofence(geofence).map_err(engine_err),
+            None => self.inner.register_zone(zone).map_err(engine_err),
         }
     }
 
@@ -131,23 +131,17 @@ impl GeoEngineNode {
     ) -> napi::Result<()> {
         let poly = polygon_from_json_value(&polygon)
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        let region = Geofence { id, polygon: poly };
+        let region = Zone { id, polygon: poly };
         self.inner
             .register_catalog_region(region)
             .map_err(engine_err)
     }
 
-    /// Register a named radius zone by center point and radius (same units as coordinates).
+    /// Register a named circle by center point and radius (same units as coordinates).
     #[napi]
-    pub fn register_radius_zone(
-        &mut self,
-        id: String,
-        cx: f64,
-        cy: f64,
-        r: f64,
-    ) -> napi::Result<()> {
-        let zone = RadiusZone { id, cx, cy, r };
-        self.inner.register_radius_zone(zone).map_err(engine_err)
+    pub fn register_circle(&mut self, id: String, cx: f64, cy: f64, r: f64) -> napi::Result<()> {
+        let circle = Circle { id, cx, cy, r };
+        self.inner.register_circle(circle).map_err(engine_err)
     }
 
     /// Process a batch of point updates and return the resulting events.

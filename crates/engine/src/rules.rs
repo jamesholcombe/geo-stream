@@ -2,8 +2,8 @@
 
 use spatial::SpatialIndex;
 use state::{
-    assignment_transition, geofence_membership_with_dwell, radius_membership_transitions,
-    EntityState, Event, GeofenceDwell,
+    assignment_transition, circle_membership_transitions, zone_membership_with_dwell, EntityState,
+    Event, ZoneDwell,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -12,7 +12,7 @@ pub struct RuleContext<'a> {
     pub entity_id: &'a str,
     pub position: (f64, f64),
     pub at_ms: u64,
-    pub geofence_dwell: &'a HashMap<String, GeofenceDwell>,
+    pub zone_dwell: &'a HashMap<String, ZoneDwell>,
 }
 
 /// One step in the engine pipeline: query spatial data, emit transitions, mutate the entity slice of state.
@@ -27,11 +27,11 @@ pub trait SpatialRule: Send + Sync {
     );
 }
 
-/// Geofence enter/exit from polygon membership.
+/// Zone enter/exit from polygon membership.
 #[derive(Debug, Copy, Clone, Default)]
-pub struct GeofenceRule;
+pub struct ZoneRule;
 
-impl SpatialRule for GeofenceRule {
+impl SpatialRule for ZoneRule {
     fn apply(
         &self,
         spatial: &dyn SpatialIndex,
@@ -41,21 +41,21 @@ impl SpatialRule for GeofenceRule {
         out: &mut Vec<Event>,
     ) {
         scratch.clear();
-        spatial.geofence_membership_at(ctx.position, scratch);
-        geofence_membership_with_dwell(
+        spatial.zone_membership_at(ctx.position, scratch);
+        zone_membership_with_dwell(
             ctx.entity_id,
             ctx.at_ms,
             scratch,
             &mut state.inside,
-            &mut state.geofence_enter_pending,
-            &mut state.geofence_exit_pending,
-            ctx.geofence_dwell,
+            &mut state.zone_enter_pending,
+            &mut state.zone_exit_pending,
+            ctx.zone_dwell,
             out,
         );
     }
 }
 
-/// Radius approach/recede from disk membership.
+/// Circle approach/recede from disk membership.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct RadiusRule;
 
@@ -69,14 +69,14 @@ impl SpatialRule for RadiusRule {
         out: &mut Vec<Event>,
     ) {
         scratch.clear();
-        spatial.radius_membership_at(ctx.position, scratch);
-        out.extend(radius_membership_transitions(
+        spatial.circle_membership_at(ctx.position, scratch);
+        out.extend(circle_membership_transitions(
             ctx.entity_id,
-            &state.inside_radius,
+            &state.inside_circle,
             scratch,
             ctx.at_ms,
         ));
-        std::mem::swap(&mut state.inside_radius, scratch);
+        std::mem::swap(&mut state.inside_circle, scratch);
     }
 }
 
@@ -104,10 +104,10 @@ impl SpatialRule for CatalogRule {
     }
 }
 
-/// Default pipeline: geofence, radius, catalog.
+/// Default pipeline: zone, radius, catalog.
 pub fn default_rules() -> Vec<Box<dyn SpatialRule>> {
     vec![
-        Box::new(GeofenceRule),
+        Box::new(ZoneRule),
         Box::new(RadiusRule),
         Box::new(CatalogRule),
     ]

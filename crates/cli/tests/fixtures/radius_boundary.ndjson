@@ -1,2 +1,2 @@
-{"type":"register_radius","id":"r1","center":[0,0],"radius":1}
+{"type":"register_circle","id":"r1","center":[0,0],"radius":1}
 {"type":"update","id":"e1","location":[1,0]}

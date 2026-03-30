@@ -2,7 +2,7 @@
  * 03-dwell.ts
  *
  * Dwell thresholds prevent spurious enter / exit events when an entity
- * briefly crosses or hovers near a geofence boundary.
+ * briefly crosses or hovers near a zone boundary.
  *
  *   minInsideMs  — entity must be continuously inside for this long before
  *                  an "enter" event fires.
@@ -17,11 +17,11 @@
  *   npx ts-node 03-dwell.ts
  */
 
-import { GeoEngine } from '../../crates/adapters/napi/types'
+import { GeoEngine } from '../../geo-stream/types'
 
 const engine = new GeoEngine()
 
-engine.registerGeofence(
+engine.registerZone(
   'loading-bay',
   {
     type: 'Polygon',
@@ -60,5 +60,5 @@ console.log('\nvan-2 sustained stay (expect enter + exit):')
 for (const ev of sustainedEvents) {
   console.log(' ', ev)
 }
-// { kind: 'enter', id: 'van-2', geofence: 'loading-bay', t_ms: 1700000005000 }
-// { kind: 'exit',  id: 'van-2', geofence: 'loading-bay', t_ms: 1700000013000 }
+// { kind: 'enter', id: 'van-2', zone: 'loading-bay', t_ms: 1700000005000 }
+// { kind: 'exit',  id: 'van-2', zone: 'loading-bay', t_ms: 1700000013000 }

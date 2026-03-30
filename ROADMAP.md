@@ -11,22 +11,22 @@ This document is the canonical reference for past, present, and future developme
 - `GeoEngine` trait: zone registration + `process_event(PointUpdate) -> Vec<Event>`
 - `Engine::process_batch`: sort by `(id, t_ms)` → process each → `sort_events_deterministic`
 - `SpatialRule` trait: composable, ordered pipeline of spatial checks per update
-- Default pipeline: `GeofenceRule → RadiusRule → CatalogRule`
+- Default pipeline: `ZoneRule → RadiusRule → CatalogRule`
 - `Engine::with_rules`: custom rule sets per deployment
-- `geofence_dwell`: per-fence `min_inside_ms` / `min_outside_ms` with pending-map cancellation on bounce-back
+- `zone_dwell`: per-zone `min_inside_ms` / `min_outside_ms` with pending-map cancellation on bounce-back
 
 ### Zone types
 
 | Zone | Events emitted | Index |
 |------|---------------|-------|
-| Geofence (polygon) | `Enter` / `Exit` | R-tree (bounding box) + exact point-in-polygon |
+| Zone (polygon) | `Enter` / `Exit` | R-tree (bounding box) + exact point-in-polygon |
 | Catalog region (polygon layer) | `AssignmentChanged` (lex-smallest containing region) | R-tree |
-| Radius zone (disk) | `Approach` / `Recede` | R-tree |
+| Circle (disk) | `Approach` / `Recede` | R-tree |
 
 ### State
 
-- Per-entity `EntityState`: position, last timestamp, geofence membership (`inside`), radius membership, catalog assignment
-- Dwell pending maps (`geofence_enter_pending`, `geofence_exit_pending`) cancel on bounce-back before threshold elapses
+- Per-entity `EntityState`: position, last timestamp, zone membership (`inside`), radius membership, catalog assignment
+- Dwell pending maps (`zone_enter_pending`, `zone_exit_pending`) cancel on bounce-back before threshold elapses
 - `sort_events_deterministic`: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
 
 ### Adapters
@@ -39,7 +39,7 @@ This document is the canonical reference for past, present, and future developme
 ```
 crates/engine/          — GeoEngine, Engine, SpatialRule pipeline
 crates/state/           — EntityState, Event enum, membership transitions
-crates/spatial/         — Geofence, RadiusZone, NaiveSpatialIndex (R-tree)
+crates/spatial/         — Zone, Circle, NaiveSpatialIndex (R-tree)
 crates/polygon-json/    — GeoJSON polygon parsing helper
 crates/adapters/stdin-stdout/
 crates/cli/             — geo-stream binary
@@ -64,21 +64,21 @@ These are correctness or design gaps that should be resolved before v1.
 The trait takes `&NaiveSpatialIndex` directly. Custom rules and alternate index implementations are blocked until this is `&dyn SpatialIndex` (or a generic bound). This is the most important abstraction gap.
 
 **2. Polygon holes are silently ignored**
-Point-in-polygon only tests the exterior ring. A point inside a hole of a registered geofence will incorrectly report as inside. This is a silent correctness bug for any geofence that has an exclusion zone.
+Point-in-polygon only tests the exterior ring. A point inside a hole of a registered zone will incorrectly report as inside. This is a silent correctness bug for any zone that has an exclusion zone.
 
 **3. Out-of-order timestamps are undefined behavior**
 `process_event` accepts any `t_ms`. No check prevents an update with a past timestamp from being processed against state that was built from future timestamps. The dwell timer logic in particular can produce incorrect events if timestamps go backwards. Document the contract explicitly and/or enforce monotonicity per entity.
 
-**4. Radius zones have no spatial index**
-`radius_membership_at` is a linear scan over `Vec<RadiusZone>`. This is O(n) per update per entity. At thousands of zones this will dominate the hot path. Radius zones are just inflated point AABBs and should get R-tree treatment identical to polygons.
+**4. Circles have no spatial index**
+`radius_membership_at` is a linear scan over `Vec<Circle>`. This is O(n) per update per entity. At thousands of zones this will dominate the hot path. Circles are just inflated point AABBs and should get R-tree treatment identical to polygons.
 
 ### Medium priority
 
 **5. Zone ID uniqueness is global across all types**
-A geofence and a radius zone or catalog region cannot share the same ID. Either: (a) document this strongly and enforce at the API surface with a clear error, or (b) make IDs scoped per zone type and update the wire protocol accordingly.
+A zone and a circle or catalog region cannot share the same ID. Either: (a) document this strongly and enforce at the API surface with a clear error, or (b) make IDs scoped per zone type and update the wire protocol accordingly.
 
-**6. Dwell / debounce is geofence-only**
-Radius zones and catalog regions have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near zone boundaries causes flapping in the same way as near geofence boundaries.
+**6. Dwell / debounce is zone-only**
+Circles and catalog regions have no equivalent of `min_inside_ms` / `min_outside_ms`. GPS noise near zone boundaries causes flapping in the same way as near zone boundaries.
 
 **7. `polygon-json` is a 30-line utility that does not need to be its own crate**
 It could live in `crates/spatial` since it is purely a geometry helper. Reduces workspace overhead.
@@ -103,7 +103,7 @@ These define what a stable, reliable v1 looks like.
 ### v1.0 — Correctness and abstraction cleanup
 
 - [x] Fix `SpatialRule::apply` to use `SpatialIndex` trait (or generic bound) rather than `NaiveSpatialIndex`
-- [x] Implement R-tree spatial index for radius zones
+- [x] Implement R-tree spatial index for circles
 - [x] Handle polygon holes correctly in point-in-polygon
 - [x] Define and enforce timestamp monotonicity contract per entity; add tests for violations
 - [x] Resolve zone ID scoping (global vs per-type); update protocol if changed
@@ -148,8 +148,8 @@ These make geo-stream useful beyond direct Rust embedding.
 ### Rule extensions
 
 - [ ] **Speed rules**: emit events when entity velocity exceeds a threshold between consecutive updates
-- [ ] **Heading rules**: emit events when direction of travel changes relative to a corridor or zone
-- [ ] **Dwell aggregation**: emit a `Dwelling` event after an entity has been inside a geofence for N ms (separate from the existing entry dwell which delays the `Enter` event itself)
+- [ ] **Heading rules**: emit events when direction of travel changes relative to a zone
+- [ ] **Dwell aggregation**: emit a `Dwelling` event after an entity has been inside a zone for N ms (separate from the existing entry dwell which delays the `Enter` event itself)
 - [ ] **Temporal rules**: suppress events between certain time windows (e.g. ignore exits at night)
 
 ### Spatial joins (entity ↔ entity)
@@ -196,7 +196,7 @@ Partition by entity ID across multiple `Engine` instances. Each shard owns a sub
 | Approach | How geo-stream differs |
 |----------|------------------------|
 | PostGIS | Store + query over rows. Geo-stream is a stateful stream processor that diffs membership over time and emits events. No database contract. |
-| Flink / Kafka Streams | Powerful but no built-in geofence lifecycle. You hand-roll point-in-polygon, membership state, dwell logic, and ordering. Geo-stream does all of this in a small, tested core. |
+| Flink / Kafka Streams | Powerful but no built-in zone lifecycle. You hand-roll point-in-polygon, membership state, dwell logic, and ordering. Geo-stream does all of this in a small, tested core. |
 | Cloud geofencing APIs | Managed, but vendor lock-in, limited programmability, per-event pricing at scale. Geo-stream is self-hosted and embeddable. |
 | Desktop / web GIS tools | Optimized for human workflows and visualization. Geo-stream is developer-first: crates, deterministic tests, container entrypoints, SDKs. |
 

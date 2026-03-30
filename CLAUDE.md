@@ -38,11 +38,11 @@ examples/                    # Sample NDJSON and GeoJSON files
 ## Key types and API
 
 - **`GeoEngine` trait** (`crates/engine`): zone registration + `process_event(&mut self, PointUpdate) -> Vec<Event>`
-- **`Engine` struct**: concrete impl; `process_batch`, `with_rules`, `register_geofence_with_dwell` (plain `register_geofence` uses default instant dwell)
+- **`Engine` struct**: concrete impl; `process_batch`, `with_rules`, `register_zone_with_dwell` (plain `register_zone` uses default instant dwell)
 - **`PointUpdate`**: `{ id, x, y, t_ms }` — `t_ms` is Unix epoch milliseconds
 - **`Event` enum** (`crates/state`): `Enter`/`Exit`, `Approach`/`Recede`, `AssignmentChanged` — each carries `t_ms`
-- **`SpatialRule` trait**: composable pipeline; default order: `GeofenceRule → RadiusRule → CatalogRule`
-- **`NaiveSpatialIndex`**: R-tree (rstar) on polygon bounding boxes + exact point-in-polygon; radius zones are a linear scan
+- **`SpatialRule` trait**: composable pipeline; default order: `ZoneRule → RadiusRule → CatalogRule`
+- **`NaiveSpatialIndex`**: R-tree (rstar) on polygon bounding boxes + exact point-in-polygon; circles are a linear scan
 - **`sort_events_deterministic`**: stable ordering by `(entity_id, t_ms, tier, zone_id, enter_before_exit)`
 
 ---
@@ -52,7 +52,7 @@ examples/                    # Sample NDJSON and GeoJSON files
 1. **Engine owns logic** — no IO, no protocol types inside `crates/engine`
 2. **Adapters are thin** — parse/serialize only; no spatial logic or business rules
 3. **Event-first** — `process_event` is primary; `process_batch` is a thin wrapper
-4. **Spatial is pluggable** — use `SpatialRule` trait, never `match rule_type { Geofence => ... }`
+4. **Spatial is pluggable** — use `SpatialRule` trait, never `match rule_type { Zone => ... }`
 5. **State is explicit** — `(old_state, event) → (new_state, outputs)`; no hidden cross-module mutation
 6. **Errors** — `Result<T, E>` in core paths; no panics in engine/state/spatial
 
@@ -86,7 +86,7 @@ CI runs: `fmt`, `clippy -D warnings`, `cargo test`, JSON Schema validation of ex
 
 ## Current v1 work (ROADMAP.md)
 
-Done: SpatialRule decoupled from NaiveSpatialIndex, R-tree for radius zones, polygon holes, timestamp monotonicity enforcement.
+Done: SpatialRule decoupled from NaiveSpatialIndex, R-tree for circles, polygon holes, timestamp monotonicity enforcement.
 
 Remaining:
 - [ ] Zone ID scoping (global vs per-type)

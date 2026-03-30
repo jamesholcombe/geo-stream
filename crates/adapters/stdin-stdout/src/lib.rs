@@ -1,6 +1,6 @@
 //! Newline-delimited JSON over stdin/stdout; parses NDJSON input lines and drives [`engine::Engine`].
 
-use engine::{Engine, EngineError, GeoEngine, Geofence, PointUpdate, RadiusZone};
+use engine::{Circle, Engine, EngineError, GeoEngine, PointUpdate, Zone};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use spatial::polygon_from_json_value;
@@ -44,7 +44,7 @@ enum InputLine {
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
     },
-    RegisterGeofence {
+    RegisterZone {
         id: String,
         polygon: Value,
         #[serde(default, rename = "v")]
@@ -56,7 +56,7 @@ enum InputLine {
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
     },
-    RegisterRadius {
+    RegisterCircle {
         id: String,
         center: [f64; 2],
         radius: f64,
@@ -70,22 +70,22 @@ enum InputLine {
 enum NdjsonEvent {
     Enter {
         id: String,
-        geofence: String,
+        zone: String,
         t: u64,
     },
     Exit {
         id: String,
-        geofence: String,
+        zone: String,
         t: u64,
     },
     Approach {
         id: String,
-        zone: String,
+        circle: String,
         t: u64,
     },
     Recede {
         id: String,
-        zone: String,
+        circle: String,
         t: u64,
     },
     AssignmentChanged {
@@ -98,20 +98,18 @@ enum NdjsonEvent {
 impl From<engine::Event> for NdjsonEvent {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter { id, geofence, t_ms } => NdjsonEvent::Enter {
+            engine::Event::Enter { id, zone, t_ms } => NdjsonEvent::Enter { id, zone, t: t_ms },
+            engine::Event::Exit { id, zone, t_ms } => NdjsonEvent::Exit { id, zone, t: t_ms },
+            engine::Event::Approach { id, circle, t_ms } => NdjsonEvent::Approach {
                 id,
-                geofence,
+                circle,
                 t: t_ms,
             },
-            engine::Event::Exit { id, geofence, t_ms } => NdjsonEvent::Exit {
+            engine::Event::Recede { id, circle, t_ms } => NdjsonEvent::Recede {
                 id,
-                geofence,
+                circle,
                 t: t_ms,
             },
-            engine::Event::Approach { id, zone, t_ms } => {
-                NdjsonEvent::Approach { id, zone, t: t_ms }
-            }
-            engine::Event::Recede { id, zone, t_ms } => NdjsonEvent::Recede { id, zone, t: t_ms },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
                 NdjsonEvent::AssignmentChanged {
                     id,
@@ -159,7 +157,7 @@ where
         };
 
         match parsed {
-            InputLine::RegisterGeofence { id, polygon, .. } => {
+            InputLine::RegisterZone { id, polygon, .. } => {
                 let poly = match polygon_from_json_value(&polygon) {
                     Ok(p) => p,
                     Err(e) => {
@@ -167,7 +165,7 @@ where
                         continue;
                     }
                 };
-                if let Err(e) = engine.register_geofence(Geofence { id, polygon: poly }) {
+                if let Err(e) = engine.register_zone(Zone { id, polygon: poly }) {
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }
@@ -179,14 +177,14 @@ where
                         continue;
                     }
                 };
-                if let Err(e) = engine.register_catalog_region(Geofence { id, polygon: poly }) {
+                if let Err(e) = engine.register_catalog_region(Zone { id, polygon: poly }) {
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }
-            InputLine::RegisterRadius {
+            InputLine::RegisterCircle {
                 id, center, radius, ..
             } => {
-                if let Err(e) = engine.register_radius_zone(RadiusZone {
+                if let Err(e) = engine.register_circle(Circle {
                     id,
                     cx: center[0],
                     cy: center[1],
@@ -252,8 +250,8 @@ mod tests {
     use engine::Engine;
     use std::io::Cursor;
 
-    fn fence_line() -> String {
-        r#"{"type":"register_geofence","id":"zone-1","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}"#.to_string()
+    fn zone_line() -> String {
+        r#"{"type":"register_zone","id":"zone-1","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}"#.to_string()
     }
 
     #[test]
@@ -261,7 +259,7 @@ mod tests {
         let mut eng = Engine::new();
         let input = format!(
             "{}\n{{\"type\":\"update\",\"id\":\"c1\",\"location\":[0.5,0.5]}}\n",
-            fence_line()
+            zone_line()
         );
         let mut out = Vec::new();
         let mut err_out = Vec::new();

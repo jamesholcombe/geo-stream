@@ -30,11 +30,11 @@ fn geo_stream_sample_input_produces_enter_then_exit() {
 
     assert_eq!(first["event"], "enter");
     assert_eq!(first["id"], "c1");
-    assert_eq!(first["geofence"], "zone-1");
+    assert_eq!(first["zone"], "zone-1");
     assert_eq!(first["t"], 1000);
 
     assert_eq!(second["event"], "exit");
     assert_eq!(second["id"], "c1");
-    assert_eq!(second["geofence"], "zone-1");
+    assert_eq!(second["zone"], "zone-1");
     assert_eq!(second["t"], 2000);
 }

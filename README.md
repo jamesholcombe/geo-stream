@@ -14,7 +14,7 @@
 
 ---
 
-Feed `geo-stream` a stream of `{ id, x, y, t_ms }` location updates and it emits structured spatial events — enter/exit geofences, approach/recede radius zones, corridor traversal, and catalog region assignment changes. The engine is a zero-copy Rust core exposed as a native Node.js module via NAPI, with no runtime dependencies.
+Feed `geo-stream` a stream of `{ id, x, y, t_ms }` location updates and it emits structured spatial events — enter/exit zones, approach/recede circles, and catalog region assignment changes. The engine is a zero-copy Rust core exposed as a native Node.js module via NAPI, with no runtime dependencies.
 
 ```
 location update → ┌──────────────────┐ → enter / exit
@@ -26,8 +26,8 @@ location update → └──────────────────┘
 
 ## Features
 
-- **Four zone types** — polygon geofences,  radius zones, and catalog regions
-- **Dwell / debounce** — configurable `minInsideMs` / `minOutsideMs` thresholds per geofence
+- **Four zone types** — polygon zones,  circles, and catalog regions
+- **Dwell / debounce** — configurable `minInsideMs` / `minOutsideMs` thresholds per zone
 - **Polygon holes** — GeoJSON polygons with interior rings are supported natively
 - **Typed events** — discriminated union `GeoEvent` with full TypeScript inference
 - **Native performance** — Rust R-tree spatial index; no JS overhead on the hot path
@@ -62,8 +62,8 @@ import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
-// Register a polygon geofence (GeoJSON)
-engine.registerGeofence('city-centre', {
+// Register a polygon zone (GeoJSON)
+engine.registerZone('city-centre', {
   type: 'Polygon',
   coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
 })
@@ -74,7 +74,7 @@ const events = engine.ingest([
 ])
 
 console.log(events)
-// [{ kind: 'enter', id: 'vehicle-1', geofence: 'city-centre', t_ms: 1700000000000 }]
+// [{ kind: 'enter', id: 'vehicle-1', zone: 'city-centre', t_ms: 1700000000000 }]
 ```
 
 ---
@@ -89,16 +89,16 @@ Creates a new, empty engine instance. Each instance tracks its own set of zones 
 
 ### Zone registration
 
-#### `registerGeofence(id, polygon, dwell?)`
+#### `registerZone(id, polygon, dwell?)`
 
-Register a named geofence from a GeoJSON `Polygon` object. Fires `enter` / `exit` events.
+Register a named zone from a GeoJSON `Polygon` object. Fires `enter` / `exit` events.
 
 ```typescript
 // Basic
-engine.registerGeofence('warehouse', polygon)
+engine.registerZone('warehouse', polygon)
 
 // With dwell thresholds (debounce boundary hover)
-engine.registerGeofence('warehouse', polygon, {
+engine.registerZone('warehouse', polygon, {
   minInsideMs: 5_000,   // must be inside ≥ 5 s before 'enter' fires
   minOutsideMs: 3_000,  // must be outside ≥ 3 s before 'exit' fires
 })
@@ -108,12 +108,12 @@ engine.registerGeofence('warehouse', polygon, {
 
 Register a catalog region. Fires `assignment_changed` whenever an entity's current containing region changes, including when it leaves all regions (`region: null`).
 
-#### `registerRadiusZone(id, cx, cy, radius)`
+#### `registerCircle(id, cx, cy, radius)`
 
 Register a circular zone by centre point and radius (in the same coordinate units as your location data). Fires `approach` / `recede`.
 
 ```typescript
-engine.registerRadiusZone('depot', 51.5074, -0.1278, 0.05)
+engine.registerCircle('depot', 51.5074, -0.1278, 0.05)
 ```
 
 ---
@@ -139,8 +139,8 @@ All events are a discriminated union on `kind`. Switch exhaustively for compile-
 
 ```typescript
 type GeoEvent =
-  | { kind: 'enter';              id: string; geofence: string;      t_ms: number }
-  | { kind: 'exit';               id: string; geofence: string;      t_ms: number }
+  | { kind: 'enter';              id: string; zone: string;      t_ms: number }
+  | { kind: 'exit';               id: string; zone: string;      t_ms: number }
   | { kind: 'approach';           id: string; zone: string;          t_ms: number }
   | { kind: 'recede';             id: string; zone: string;          t_ms: number }
   | { kind: 'assignment_changed'; id: string; region: string | null; t_ms: number }
@@ -148,10 +148,10 @@ type GeoEvent =
 
 | `kind` | Trigger | Key field |
 |--------|---------|-----------|
-| `enter` | Entity enters a geofence | `geofence` |
-| `exit` | Entity exits a geofence | `geofence` |
-| `approach` | Entity enters a radius zone | `zone` |
-| `recede` | Entity exits a radius zone | `zone` |
+| `enter` | Entity enters a zone | `zone` |
+| `exit` | Entity exits a zone | `zone` |
+| `approach` | Entity enters a circle | `zone` |
+| `recede` | Entity exits a circle | `zone` |
 | `assignment_changed` | Entity's catalog region changes | `region` (`null` = unassigned) |
 
 ---
@@ -162,14 +162,14 @@ Working examples are in [`examples/typescript/`](examples/typescript/):
 
 | File | What it shows |
 |------|---------------|
-| [`01-basic-geofence.ts`](examples/typescript/01-basic-geofence.ts) | Register a polygon, ingest points, observe enter/exit events |
-| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All three zone types — geofence, catalog, radius — in one script |
+| [`01-basic-zone.ts`](examples/typescript/01-basic-zone.ts) | Register a polygon, ingest points, observe enter/exit events |
+| [`02-multi-zone.ts`](examples/typescript/02-multi-zone.ts) | All three zone types — zone, catalog, circle — in one script |
 | [`03-dwell.ts`](examples/typescript/03-dwell.ts) | Dwell thresholds to debounce boundary hover |
 
 ```bash
 cd examples/typescript
 npm install
-npx ts-node 01-basic-geofence.ts
+npx ts-node 01-basic-zone.ts
 ```
 
 ---
@@ -186,15 +186,15 @@ cargo run -p cli --bin geo-stream -- < examples/sample-input.ndjson
 ```
 
 ```json
-{"event":"enter","id":"c1","geofence":"zone-1","t":1700000000000}
-{"event":"exit","id":"c1","geofence":"zone-1","t":1700000060000}
+{"event":"enter","id":"c1","zone":"zone-1","t":1700000000000}
+{"event":"exit","id":"c1","zone":"zone-1","t":1700000060000}
 ```
 
 **Input shapes:**
 
 ```jsonc
-// Register a geofence
-{"type":"register_geofence","id":"zone-1","polygon":{...GeoJSON Polygon...}}
+// Register a zone
+{"type":"register_zone","id":"zone-1","polygon":{...GeoJSON Polygon...}}
 
 // Point update
 {"type":"update","id":"c1","location":[x,y],"t":1700000000000}
@@ -219,7 +219,7 @@ use engine::{Engine, GeoEngine};
 use state::PointUpdate;
 
 let mut engine = Engine::default();
-engine.register_geofence("zone-1", polygon)?;
+engine.register_zone("zone-1", polygon)?;
 
 let events = engine.process_event(PointUpdate {
     id: "c1".into(),

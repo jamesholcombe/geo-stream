@@ -20,12 +20,12 @@ Clients must not mix error payloads on stdout if they parse events line-by-line.
 
 Input lines may include an optional numeric **`v`** field. Parsers should tolerate **unknown fields** where possible.
 
-## Input: register a geofence
+## Input: register a zone
 
 Registers a polygon before processing updates. `polygon` must be a GeoJSON **Polygon** geometry object (including `type` and `coordinates`).
 
 ```json
-{"type":"register_geofence","id":"zone-1","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}
+{"type":"register_zone","id":"zone-1","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}
 ```
 
 Registration is applied **immediately** when the line is read (before subsequent updates on later lines).
@@ -36,7 +36,7 @@ Registration is applied **immediately** when the line is read (before subsequent
 {"type":"update","id":"c1","location":[0.5,0.5],"t":1700000000000}
 ```
 
-`location` is `[x, y]` in the same coordinate system as geofence rings (typically WGS-84 longitude/latitude or a projected CRS — the engine does not reproject).
+`location` is `[x, y]` in the same coordinate system as zone polygon rings (typically WGS-84 longitude/latitude or a projected CRS — the engine does not reproject).
 
 Optional **`t`**: Unix epoch time in **milliseconds** for this observation. If omitted, it defaults to **`0`**. The engine sorts batched updates with the same `id` by `t` ascending before processing.
 
@@ -46,7 +46,7 @@ Radius and polygon tests use the **same planar coordinate system** as `location`
 
 ## Zone id scoping
 
-Zone `id` values are **scoped per registration kind**. The same `id` string may be used independently for a geofence, a catalog region, and a radius zone without conflict. Duplicate ids within the same kind are rejected.
+Zone `id` values are **scoped per registration kind**. The same `id` string may be used independently for a zone, a catalog region, and a circle without conflict. Duplicate ids within the same kind are rejected.
 
 ## Input: register catalog region
 
@@ -56,30 +56,30 @@ Same **Polygon** geometry. Semantics: at most one **primary** catalog assignment
 {"type":"register_catalog_region","id":"ward-north","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}
 ```
 
-## Input: register radius zone
+## Input: register circle
 
 `center` is `[x, y]`; `radius` must be **positive** (same units as coordinates). A point is inside when Euclidean distance from `center` is **≤ radius** (boundary inclusive).
 
 ```json
-{"type":"register_radius","id":"anchor-1","center":[0,0],"radius":100}
+{"type":"register_circle","id":"anchor-1","center":[0,0],"radius":100}
 ```
 
 ## Timestamps on stdout events
 
 Every emitted event includes **`t`**: the same millisecond value as the `update` line that produced it (the observation time for that transition).
 
-## Output: geofence events
+## Output: zone events
 
 Enter:
 
 ```json
-{"event":"enter","id":"c1","geofence":"zone-1","t":1700000000000}
+{"event":"enter","id":"c1","zone":"zone-1","t":1700000000000}
 ```
 
 Exit:
 
 ```json
-{"event":"exit","id":"c1","geofence":"zone-1","t":1700000000001}
+{"event":"exit","id":"c1","zone":"zone-1","t":1700000000001}
 ```
 
 ## Output: radius events
@@ -120,9 +120,9 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 
 1. Entity `id`
 2. Observation time **`t`** (milliseconds)
-3. Category: **geofence** (`enter` / `exit`), then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
-4. Within a category, by zone / geofence / radius id (lexicographic)
-5. For geofence and radius: **enter-type** (or `approach`) before **exit-type** (or `recede`)
+3. Category: **zone** (`enter` / `exit`), then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
+4. Within a category, by zone / circle id (lexicographic)
+5. For zone and circle: **enter-type** (or `approach`) before **exit-type** (or `recede`)
 
 ## Example: pipe a file
 
@@ -130,7 +130,7 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 cargo run -p cli --bin geo-stream -- < examples/sample-input.ndjson
 ```
 
-A larger example with catalog regions and radius zones: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
+A larger example with catalog regions and circles: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
 
 Docker (from **this repository root**, where `Cargo.toml` lives):
 

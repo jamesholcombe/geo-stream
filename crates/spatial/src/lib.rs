@@ -18,9 +18,9 @@ use thiserror::Error;
 pub enum PolygonJsonError {
     #[error("invalid GeoJSON geometry: {0}")]
     InvalidGeometry(String),
-    #[error("unsupported geometry for geofence")]
+    #[error("unsupported geometry for zone")]
     UnsupportedGeometry,
-    #[error("geofence polygon must be a GeoJSON Polygon")]
+    #[error("zone polygon must be a GeoJSON Polygon")]
     NotPolygon,
 }
 
@@ -38,7 +38,7 @@ pub fn polygon_from_json_value(value: &Value) -> Result<Polygon<f64>, PolygonJso
     }
 }
 
-/// R-tree wrapper for a radius zone: stores the zone's index in the Vec and its AABB.
+/// R-tree wrapper for a circle: stores the circle's index in the Vec and its AABB.
 #[derive(Clone, Copy)]
 struct IndexedRadius {
     index: usize,
@@ -57,23 +57,23 @@ fn radius_aabb(cx: f64, cy: f64, r: f64) -> AABB<[f64; 2]> {
     AABB::from_corners([cx - r, cy - r], [cx + r, cy + r])
 }
 
-/// A named geofence as a polygon (exterior ring plus optional interior holes).
+/// A named zone as a polygon (exterior ring plus optional interior holes).
 #[derive(Debug, Clone)]
-pub struct Geofence {
+pub struct Zone {
     pub id: String,
     pub polygon: Polygon<f64>,
 }
 
 /// Fixed center + radius disk in the same planar CRS as polygons (Euclidean distance).
 #[derive(Debug, Clone)]
-pub struct RadiusZone {
+pub struct Circle {
     pub id: String,
     pub cx: f64,
     pub cy: f64,
     pub r: f64,
 }
 
-impl RadiusZone {
+impl Circle {
     pub fn contains_point(&self, x: f64, y: f64) -> bool {
         let dx = x - self.cx;
         let dy = y - self.cy;
@@ -91,22 +91,22 @@ pub enum SpatialError {
     InvalidRadius,
 }
 
-/// Spatial containment queries over registered geofences.
+/// Spatial containment queries over registered zones.
 pub trait SpatialIndex {
-    fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence>;
-    fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
-    fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
+    fn containing_zones(&self, point: (f64, f64)) -> Vec<&Zone>;
+    fn zone_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
+    fn circle_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
     fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String>;
 }
 
-/// R-tree index on polygon bounding boxes with exact `contains` refinement; radius zones also R-tree indexed.
+/// R-tree index on polygon bounding boxes with exact `contains` refinement; circles also R-tree indexed.
 pub struct NaiveSpatialIndex {
-    fences: Vec<Geofence>,
+    fences: Vec<Zone>,
     fence_tree: RTree<IndexedPolygon>,
-    catalog: Vec<Geofence>,
+    catalog: Vec<Zone>,
     catalog_tree: RTree<IndexedPolygon>,
-    radius_zones: Vec<RadiusZone>,
-    radius_tree: RTree<IndexedRadius>,
+    circles: Vec<Circle>,
+    circle_tree: RTree<IndexedRadius>,
 }
 
 impl Default for NaiveSpatialIndex {
@@ -116,8 +116,8 @@ impl Default for NaiveSpatialIndex {
             fence_tree: RTree::new(),
             catalog: Vec::new(),
             catalog_tree: RTree::new(),
-            radius_zones: Vec::new(),
-            radius_tree: RTree::new(),
+            circles: Vec::new(),
+            circle_tree: RTree::new(),
         }
     }
 }
@@ -127,7 +127,7 @@ impl fmt::Debug for NaiveSpatialIndex {
         f.debug_struct("NaiveSpatialIndex")
             .field("fences", &self.fences.len())
             .field("catalog", &self.catalog.len())
-            .field("radius_zones", &self.radius_zones.len())
+            .field("circles", &self.circles.len())
             .finish()
     }
 }
@@ -160,10 +160,10 @@ fn point_probe_envelope(point: (f64, f64)) -> AABB<[f64; 2]> {
 }
 
 fn containing_polygons<'a>(
-    zones: &'a [Geofence],
+    zones: &'a [Zone],
     tree: &RTree<IndexedPolygon>,
     point: (f64, f64),
-) -> Vec<&'a Geofence> {
+) -> Vec<&'a Zone> {
     let pt = Point::new(point.0, point.1);
     let probe = point_probe_envelope(point);
     let mut out = Vec::new();
@@ -177,7 +177,7 @@ fn containing_polygons<'a>(
 }
 
 fn fill_polygon_zone_ids(
-    zones: &[Geofence],
+    zones: &[Zone],
     tree: &RTree<IndexedPolygon>,
     point: (f64, f64),
     out: &mut BTreeSet<String>,
@@ -194,7 +194,7 @@ fn fill_polygon_zone_ids(
 }
 
 fn primary_catalog_at_indexed(
-    catalog: &[Geofence],
+    catalog: &[Zone],
     tree: &RTree<IndexedPolygon>,
     point: (f64, f64),
 ) -> Option<String> {
@@ -218,12 +218,8 @@ impl NaiveSpatialIndex {
         Self::default()
     }
 
-    /// Register a geofence (enter/exit events).
-    pub fn try_push(&mut self, fence: Geofence) -> Result<(), SpatialError> {
-        self.try_push_geofence(fence)
-    }
-
-    pub fn try_push_geofence(&mut self, fence: Geofence) -> Result<(), SpatialError> {
+    /// Register a zone (enter/exit events).
+    pub fn try_push_zone(&mut self, fence: Zone) -> Result<(), SpatialError> {
         validate_polygon(&fence.polygon)?;
         if self.fences.iter().any(|f| f.id == fence.id) {
             return Err(SpatialError::DuplicateZoneId(fence.id.clone()));
@@ -239,7 +235,7 @@ impl NaiveSpatialIndex {
     }
 
     /// Register a catalog region (`assignment_changed` events; tie-break: lexicographically smallest id).
-    pub fn try_push_catalog_region(&mut self, region: Geofence) -> Result<(), SpatialError> {
+    pub fn try_push_catalog_region(&mut self, region: Zone) -> Result<(), SpatialError> {
         validate_polygon(&region.polygon)?;
         if self.catalog.iter().any(|r| r.id == region.id) {
             return Err(SpatialError::DuplicateZoneId(region.id.clone()));
@@ -254,55 +250,55 @@ impl NaiveSpatialIndex {
         Ok(())
     }
 
-    pub fn try_push_radius_zone(&mut self, zone: RadiusZone) -> Result<(), SpatialError> {
-        if zone.r <= 0.0 || !zone.r.is_finite() {
+    pub fn try_push_circle(&mut self, circle: Circle) -> Result<(), SpatialError> {
+        if circle.r <= 0.0 || !circle.r.is_finite() {
             return Err(SpatialError::InvalidRadius);
         }
-        if !zone.cx.is_finite() || !zone.cy.is_finite() {
+        if !circle.cx.is_finite() || !circle.cy.is_finite() {
             return Err(SpatialError::InvalidRadius);
         }
-        if self.radius_zones.iter().any(|z| z.id == zone.id) {
-            return Err(SpatialError::DuplicateZoneId(zone.id.clone()));
+        if self.circles.iter().any(|z| z.id == circle.id) {
+            return Err(SpatialError::DuplicateZoneId(circle.id.clone()));
         }
-        let envelope = radius_aabb(zone.cx, zone.cy, zone.r);
-        self.radius_zones.push(zone);
-        let index = self.radius_zones.len() - 1;
-        self.radius_tree.insert(IndexedRadius { index, envelope });
+        let envelope = radius_aabb(circle.cx, circle.cy, circle.r);
+        self.circles.push(circle);
+        let index = self.circles.len() - 1;
+        self.circle_tree.insert(IndexedRadius { index, envelope });
         Ok(())
     }
 
-    pub fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
+    pub fn containing_zones(&self, point: (f64, f64)) -> Vec<&Zone> {
         containing_polygons(&self.fences, &self.fence_tree, point)
     }
 
-    pub fn containing_catalog_regions(&self, point: (f64, f64)) -> Vec<&Geofence> {
+    pub fn containing_catalog_regions(&self, point: (f64, f64)) -> Vec<&Zone> {
         containing_polygons(&self.catalog, &self.catalog_tree, point)
     }
 
-    pub fn containing_radius_zones(&self, point: (f64, f64)) -> Vec<&RadiusZone> {
+    pub fn containing_circles(&self, point: (f64, f64)) -> Vec<&Circle> {
         let probe = point_probe_envelope(point);
-        self.radius_tree
+        self.circle_tree
             .locate_in_envelope_intersecting(&probe)
-            .filter(|obj| self.radius_zones[obj.index].contains_point(point.0, point.1))
-            .map(|obj| &self.radius_zones[obj.index])
+            .filter(|obj| self.circles[obj.index].contains_point(point.0, point.1))
+            .map(|obj| &self.circles[obj.index])
             .collect()
     }
 }
 
 impl SpatialIndex for NaiveSpatialIndex {
-    fn containing_geofences(&self, point: (f64, f64)) -> Vec<&Geofence> {
+    fn containing_zones(&self, point: (f64, f64)) -> Vec<&Zone> {
         containing_polygons(&self.fences, &self.fence_tree, point)
     }
 
-    fn geofence_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+    fn zone_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         fill_polygon_zone_ids(&self.fences, &self.fence_tree, point, out);
     }
 
-    fn radius_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
+    fn circle_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>) {
         out.clear();
         let probe = point_probe_envelope(point);
-        for obj in self.radius_tree.locate_in_envelope_intersecting(&probe) {
-            let z = &self.radius_zones[obj.index];
+        for obj in self.circle_tree.locate_in_envelope_intersecting(&probe) {
+            let z = &self.circles[obj.index];
             if z.contains_point(point.0, point.1) {
                 out.insert(z.id.clone());
             }
@@ -315,7 +311,7 @@ impl SpatialIndex for NaiveSpatialIndex {
 }
 
 /// When multiple catalog polygons contain the point, choose the lexicographically smallest id.
-pub fn primary_catalog_region(containing: &[&Geofence]) -> Option<String> {
+pub fn primary_catalog_region(containing: &[&Zone]) -> Option<String> {
     containing
         .iter()
         .map(|g| g.id.as_str())
@@ -348,7 +344,7 @@ fn validate_polygon(polygon: &Polygon<f64>) -> Result<(), SpatialError> {
 
 #[cfg(test)]
 impl NaiveSpatialIndex {
-    fn linear_geofence_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
+    fn linear_zone_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
         let pt = Point::new(p.0, p.1);
         self.fences
             .iter()
@@ -367,8 +363,8 @@ impl NaiveSpatialIndex {
             .map(String::from)
     }
 
-    fn linear_radius_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
-        self.radius_zones
+    fn linear_circle_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
+        self.circles
             .iter()
             .filter(|z| z.contains_point(p.0, p.1))
             .map(|z| z.id.clone())
@@ -455,17 +451,17 @@ mod tests {
     }
 
     #[test]
-    fn geofence_with_hole_excludes_point_in_hole() {
+    fn zone_with_hole_excludes_point_in_hole() {
         let mut idx = NaiveSpatialIndex::new();
-        idx.try_push(Geofence {
+        idx.try_push_zone(Zone {
             id: "holey".into(),
             polygon: square_with_hole(),
         })
         .unwrap();
         // Inside hole → not contained.
-        assert!(idx.containing_geofences((5.0, 5.0)).is_empty());
+        assert!(idx.containing_zones((5.0, 5.0)).is_empty());
         // Outside hole but inside exterior → contained.
-        let hits = idx.containing_geofences((1.0, 1.0));
+        let hits = idx.containing_zones((1.0, 1.0));
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "holey");
     }
@@ -489,7 +485,7 @@ mod tests {
         );
         let mut idx = NaiveSpatialIndex::new();
         let err = idx
-            .try_push(Geofence {
+            .try_push_zone(Zone {
                 id: "bad_hole".into(),
                 polygon: bad,
             })
@@ -498,21 +494,21 @@ mod tests {
     }
 
     #[test]
-    fn naive_index_finds_fence() {
+    fn naive_index_finds_zone() {
         let mut idx = NaiveSpatialIndex::new();
-        idx.try_push(Geofence {
+        idx.try_push_zone(Zone {
             id: "a".into(),
             polygon: square(),
         })
         .unwrap();
-        let hits = idx.containing_geofences((5.0, 5.0));
+        let hits = idx.containing_zones((5.0, 5.0));
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "a");
     }
 
     #[test]
-    fn radius_on_boundary_counts_inside() {
-        let z = RadiusZone {
+    fn circle_on_boundary_counts_inside() {
+        let z = Circle {
             id: "r1".into(),
             cx: 0.0,
             cy: 0.0,
@@ -524,11 +520,11 @@ mod tests {
 
     #[test]
     fn primary_catalog_tie_break() {
-        let a = Geofence {
+        let a = Zone {
             id: "b".into(),
             polygon: square(),
         };
-        let b = Geofence {
+        let b = Zone {
             id: "a".into(),
             polygon: square(),
         };
@@ -539,12 +535,12 @@ mod tests {
     #[test]
     fn primary_catalog_at_matches_region_refs() {
         let mut idx = NaiveSpatialIndex::new();
-        idx.try_push_catalog_region(Geofence {
+        idx.try_push_catalog_region(Zone {
             id: "b".into(),
             polygon: square(),
         })
         .unwrap();
-        idx.try_push_catalog_region(Geofence {
+        idx.try_push_catalog_region(Zone {
             id: "a".into(),
             polygon: square(),
         })
@@ -558,14 +554,13 @@ mod tests {
     #[test]
     fn same_id_across_zone_types_is_allowed() {
         let mut idx = NaiveSpatialIndex::new();
-        // Register a geofence with id "x".
-        idx.try_push(Geofence {
+        idx.try_push_zone(Zone {
             id: "x".into(),
             polygon: square(),
         })
         .unwrap();
-        // Same id "x" in a radius zone — different type, must succeed.
-        idx.try_push_radius_zone(RadiusZone {
+        // Same id "x" in a circle — different type, must succeed.
+        idx.try_push_circle(Circle {
             id: "x".into(),
             cx: 0.0,
             cy: 0.0,
@@ -573,7 +568,7 @@ mod tests {
         })
         .unwrap();
         // Same id "x" as a catalog region — must also succeed.
-        idx.try_push_catalog_region(Geofence {
+        idx.try_push_catalog_region(Zone {
             id: "x".into(),
             polygon: square(),
         })
@@ -583,13 +578,13 @@ mod tests {
     #[test]
     fn duplicate_id_within_same_type_rejected() {
         let mut idx = NaiveSpatialIndex::new();
-        idx.try_push_geofence(Geofence {
+        idx.try_push_zone(Zone {
             id: "dup".into(),
             polygon: square(),
         })
         .unwrap();
         let err = idx
-            .try_push_geofence(Geofence {
+            .try_push_zone(Zone {
                 id: "dup".into(),
                 polygon: square(),
             })
@@ -597,7 +592,7 @@ mod tests {
         assert!(matches!(err, SpatialError::DuplicateZoneId(_)));
 
         let mut idx2 = NaiveSpatialIndex::new();
-        idx2.try_push_radius_zone(RadiusZone {
+        idx2.try_push_circle(Circle {
             id: "dup".into(),
             cx: 0.0,
             cy: 0.0,
@@ -605,7 +600,7 @@ mod tests {
         })
         .unwrap();
         let err2 = idx2
-            .try_push_radius_zone(RadiusZone {
+            .try_push_circle(Circle {
                 id: "dup".into(),
                 cx: 5.0,
                 cy: 5.0,
@@ -616,12 +611,12 @@ mod tests {
     }
 
     #[test]
-    fn rtree_geofence_membership_matches_linear_scan() {
+    fn rtree_zone_membership_matches_linear_scan() {
         let mut idx = NaiveSpatialIndex::new();
         for i in 0..24 {
             let ox = (i as f64) * 3.0;
             let oy = (i as f64 % 5.0) * 2.0;
-            idx.try_push(Geofence {
+            idx.try_push_zone(Zone {
                 id: format!("z{i}"),
                 polygon: unit_square_at(ox, oy),
             })
@@ -637,8 +632,8 @@ mod tests {
         ];
         for p in probes {
             let mut rt = BTreeSet::new();
-            idx.geofence_membership_at(p, &mut rt);
-            assert_eq!(rt, idx.linear_geofence_ids_at(p), "probe {p:?}");
+            idx.zone_membership_at(p, &mut rt);
+            assert_eq!(rt, idx.linear_zone_ids_at(p), "probe {p:?}");
         }
     }
 
@@ -646,13 +641,13 @@ mod tests {
     fn rtree_primary_catalog_matches_linear_scan() {
         let mut idx = NaiveSpatialIndex::new();
         for i in 0..12 {
-            idx.try_push_catalog_region(Geofence {
+            idx.try_push_catalog_region(Zone {
                 id: format!("r{i:02}"),
                 polygon: unit_square_at(0.0, i as f64 * 0.5),
             })
             .unwrap();
         }
-        idx.try_push_catalog_region(Geofence {
+        idx.try_push_catalog_region(Zone {
             id: "r_overlap".into(),
             polygon: unit_square_at(0.0, 0.0),
         })
@@ -667,14 +662,14 @@ mod tests {
     }
 
     #[test]
-    fn rtree_radius_membership_matches_linear_scan() {
+    fn rtree_circle_membership_matches_linear_scan() {
         let mut idx = NaiveSpatialIndex::new();
-        // Spread disks at varied positions and radii so some overlap and some don't.
+        // Spread circles at varied positions and radii so some overlap and some don't.
         for i in 0..20u32 {
             let cx = (i as f64) * 5.0;
             let cy = (i as f64 % 4.0) * 5.0;
             let r = 1.0 + (i as f64 % 3.0);
-            idx.try_push_radius_zone(RadiusZone {
+            idx.try_push_circle(Circle {
                 id: format!("rz{i}"),
                 cx,
                 cy,
@@ -692,8 +687,8 @@ mod tests {
         ];
         for p in probes {
             let mut rt = BTreeSet::new();
-            idx.radius_membership_at(p, &mut rt);
-            assert_eq!(rt, idx.linear_radius_ids_at(p), "probe {p:?}");
+            idx.circle_membership_at(p, &mut rt);
+            assert_eq!(rt, idx.linear_circle_ids_at(p), "probe {p:?}");
         }
     }
 

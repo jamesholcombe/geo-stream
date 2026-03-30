@@ -8,10 +8,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use thiserror::Error;
 
-pub use rules::{default_rules, CatalogRule, GeofenceRule, RadiusRule, RuleContext, SpatialRule};
+pub use rules::{default_rules, CatalogRule, RadiusRule, RuleContext, SpatialRule, ZoneRule};
 
-pub use spatial::{Geofence, RadiusZone, SpatialError, SpatialIndex};
-pub use state::{EntityState, Event, GeofenceDwell};
+pub use spatial::{Circle, SpatialError, SpatialIndex, Zone};
+pub use state::{EntityState, Event, ZoneDwell};
 
 /// Single location observation for an entity.
 #[derive(Debug, Clone, PartialEq)]
@@ -25,9 +25,9 @@ pub struct PointUpdate {
 
 /// Engine API: zone registration and single-update processing.
 pub trait GeoEngine {
-    fn register_geofence(&mut self, geofence: Geofence) -> Result<(), EngineError>;
-    fn register_catalog_region(&mut self, region: Geofence) -> Result<(), EngineError>;
-    fn register_radius_zone(&mut self, zone: RadiusZone) -> Result<(), EngineError>;
+    fn register_zone(&mut self, zone: Zone) -> Result<(), EngineError>;
+    fn register_catalog_region(&mut self, region: Zone) -> Result<(), EngineError>;
+    fn register_circle(&mut self, circle: Circle) -> Result<(), EngineError>;
 
     /// Process one location update. Returns an error if the update's timestamp is strictly less
     /// than the last seen timestamp for the entity (monotonicity violation).
@@ -52,8 +52,8 @@ pub enum EngineError {
 /// In-memory engine: R-tree-accelerated polygon queries + per-entity membership state.
 pub struct Engine {
     spatial: NaiveSpatialIndex,
-    /// Per geofence id: minimum inside/outside dwell before enter/exit events.
-    geofence_dwell: HashMap<String, GeofenceDwell>,
+    /// Per zone id: minimum inside/outside dwell before enter/exit events.
+    zone_dwell: HashMap<String, ZoneDwell>,
     entities: HashMap<String, EntityState>,
     /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
@@ -64,7 +64,7 @@ impl fmt::Debug for Engine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Engine")
             .field("spatial", &self.spatial)
-            .field("geofence_dwell", &self.geofence_dwell.len())
+            .field("zone_dwell", &self.zone_dwell.len())
             .field("entities", &self.entities)
             .field("rules", &self.rules.len())
             .finish()
@@ -75,7 +75,7 @@ impl Default for Engine {
     fn default() -> Self {
         Self {
             spatial: NaiveSpatialIndex::default(),
-            geofence_dwell: HashMap::new(),
+            zone_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
@@ -91,22 +91,22 @@ impl Engine {
     pub fn with_rules(rules: Vec<Box<dyn SpatialRule>>) -> Self {
         Self {
             spatial: NaiveSpatialIndex::default(),
-            geofence_dwell: HashMap::new(),
+            zone_dwell: HashMap::new(),
             entities: HashMap::new(),
             membership_scratch: BTreeSet::new(),
             rules,
         }
     }
 
-    /// Register a geofence with dwell / exit-debounce parameters (see [`GeofenceDwell`]).
-    pub fn register_geofence_with_dwell(
+    /// Register a zone with dwell / exit-debounce parameters (see [`ZoneDwell`]).
+    pub fn register_zone_with_dwell(
         &mut self,
-        geofence: Geofence,
-        dwell: GeofenceDwell,
+        zone: Zone,
+        dwell: ZoneDwell,
     ) -> Result<(), EngineError> {
-        let id = geofence.id.clone();
-        self.spatial.try_push(geofence)?;
-        self.geofence_dwell.insert(id, dwell);
+        let id = zone.id.clone();
+        self.spatial.try_push_zone(zone)?;
+        self.zone_dwell.insert(id, dwell);
         Ok(())
     }
 
@@ -131,20 +131,20 @@ impl Engine {
 }
 
 impl GeoEngine for Engine {
-    fn register_geofence(&mut self, geofence: Geofence) -> Result<(), EngineError> {
-        let id = geofence.id.clone();
-        self.spatial.try_push(geofence)?;
-        self.geofence_dwell.insert(id, GeofenceDwell::default());
+    fn register_zone(&mut self, zone: Zone) -> Result<(), EngineError> {
+        let id = zone.id.clone();
+        self.spatial.try_push_zone(zone)?;
+        self.zone_dwell.insert(id, ZoneDwell::default());
         Ok(())
     }
 
-    fn register_catalog_region(&mut self, region: Geofence) -> Result<(), EngineError> {
+    fn register_catalog_region(&mut self, region: Zone) -> Result<(), EngineError> {
         self.spatial.try_push_catalog_region(region)?;
         Ok(())
     }
 
-    fn register_radius_zone(&mut self, zone: RadiusZone) -> Result<(), EngineError> {
-        self.spatial.try_push_radius_zone(zone)?;
+    fn register_circle(&mut self, circle: Circle) -> Result<(), EngineError> {
+        self.spatial.try_push_circle(circle)?;
         Ok(())
     }
 
@@ -156,7 +156,7 @@ impl GeoEngine for Engine {
 
         let Engine {
             spatial,
-            geofence_dwell,
+            zone_dwell,
             entities,
             membership_scratch,
             rules,
@@ -179,7 +179,7 @@ impl GeoEngine for Engine {
             entity_id,
             position: p,
             at_ms: t_ms,
-            geofence_dwell,
+            zone_dwell,
         };
         for rule in rules.iter() {
             rule.apply(
@@ -216,9 +216,9 @@ mod tests {
     }
 
     #[test]
-    fn process_event_enter_then_exit_geofence() {
+    fn process_event_enter_then_exit_zone() {
         let mut e = Engine::new();
-        e.register_geofence(Geofence {
+        e.register_zone(Zone {
             id: "zone-1".into(),
             polygon: unit_square(),
         })
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Enter { id, geofence, t_ms: 100 } if id == "c1" && geofence == "zone-1"
+            Event::Enter { id, zone, t_ms: 100 } if id == "c1" && zone == "zone-1"
         ));
 
         let ev2 = e
@@ -249,14 +249,14 @@ mod tests {
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Exit { id, geofence, t_ms: 200 } if id == "c1" && geofence == "zone-1"
+            Event::Exit { id, zone, t_ms: 200 } if id == "c1" && zone == "zone-1"
         ));
     }
 
     #[test]
     fn enter_then_exit_square() {
         let mut e = Engine::new();
-        e.register_geofence(Geofence {
+        e.register_zone(Zone {
             id: "zone-1".into(),
             polygon: unit_square(),
         })
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Enter { id, geofence, .. } if id == "c1" && geofence == "zone-1"
+            Event::Enter { id, zone, .. } if id == "c1" && zone == "zone-1"
         ));
 
         let (ev2, errs2) = e.process_batch(vec![PointUpdate {
@@ -285,14 +285,14 @@ mod tests {
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Exit { id, geofence, .. } if id == "c1" && geofence == "zone-1"
+            Event::Exit { id, zone, .. } if id == "c1" && zone == "zone-1"
         ));
     }
 
     #[test]
     fn deterministic_batch_ordering() {
         let mut e = Engine::new();
-        e.register_geofence(Geofence {
+        e.register_zone(Zone {
             id: "z".into(),
             polygon: unit_square(),
         })
@@ -321,12 +321,12 @@ mod tests {
     #[test]
     fn catalog_assignment_tie_break_smallest_id() {
         let mut e = Engine::new();
-        e.register_catalog_region(Geofence {
+        e.register_catalog_region(Zone {
             id: "region-b".into(),
             polygon: unit_square(),
         })
         .unwrap();
-        e.register_catalog_region(Geofence {
+        e.register_catalog_region(Zone {
             id: "region-a".into(),
             polygon: unit_square(),
         })
@@ -360,9 +360,9 @@ mod tests {
     }
 
     #[test]
-    fn approach_recede_radius() {
+    fn approach_recede_circle() {
         let mut e = Engine::new();
-        e.register_radius_zone(RadiusZone {
+        e.register_circle(Circle {
             id: "rad-1".into(),
             cx: 0.0,
             cy: 0.0,
@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(ev1.len(), 1);
         assert!(matches!(
             &ev1[0],
-            Event::Approach { id, zone, .. } if id == "c1" && zone == "rad-1"
+            Event::Approach { id, circle, .. } if id == "c1" && circle == "rad-1"
         ));
 
         let (ev2, errs2) = e.process_batch(vec![PointUpdate {
@@ -393,19 +393,19 @@ mod tests {
         assert_eq!(ev2.len(), 1);
         assert!(matches!(
             &ev2[0],
-            Event::Recede { id, zone, .. } if id == "c1" && zone == "rad-1"
+            Event::Recede { id, circle, .. } if id == "c1" && circle == "rad-1"
         ));
     }
 
     #[test]
-    fn geofence_min_inside_ms_delays_enter_until_engine() {
+    fn zone_min_inside_ms_delays_enter_until_engine() {
         let mut e = Engine::new();
-        e.register_geofence_with_dwell(
-            Geofence {
+        e.register_zone_with_dwell(
+            Zone {
                 id: "zone-1".into(),
                 polygon: unit_square(),
             },
-            GeofenceDwell {
+            ZoneDwell {
                 min_inside_ms: Some(50),
                 min_outside_ms: None,
             },
@@ -433,19 +433,19 @@ mod tests {
         assert_eq!(ev.len(), 1);
         assert!(matches!(
             &ev[0],
-            Event::Enter { id, geofence, t_ms: 50, .. } if id == "c1" && geofence == "zone-1"
+            Event::Enter { id, zone, t_ms: 50, .. } if id == "c1" && zone == "zone-1"
         ));
     }
 
     #[test]
-    fn geofence_min_outside_ms_debounces_exit() {
+    fn zone_min_outside_ms_debounces_exit() {
         let mut e = Engine::new();
-        e.register_geofence_with_dwell(
-            Geofence {
+        e.register_zone_with_dwell(
+            Zone {
                 id: "zone-1".into(),
                 polygon: unit_square(),
             },
-            GeofenceDwell {
+            ZoneDwell {
                 min_inside_ms: None,
                 min_outside_ms: Some(30),
             },
@@ -481,7 +481,7 @@ mod tests {
         assert_eq!(ev.len(), 1);
         assert!(matches!(
             &ev[0],
-            Event::Exit { id, geofence, t_ms: 30, .. } if id == "c1" && geofence == "zone-1"
+            Event::Exit { id, zone, t_ms: 30, .. } if id == "c1" && zone == "zone-1"
         ));
     }
 
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn process_batch_skip_and_collect_violations() {
         let mut e = Engine::new();
-        e.register_geofence(Geofence {
+        e.register_zone(Zone {
             id: "zone-1".into(),
             polygon: unit_square(),
         })
@@ -589,7 +589,7 @@ mod tests {
         assert_eq!(events.len(), 1, "expected exactly one Exit event");
         assert!(matches!(
             &events[0],
-            Event::Exit { id, geofence, .. } if id == "e1" && geofence == "zone-1"
+            Event::Exit { id, zone, .. } if id == "e1" && zone == "zone-1"
         ));
 
         // The backwards update (t=50) must appear as a collected error.

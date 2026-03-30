@@ -18,10 +18,10 @@ export type { PointUpdateJs as PointUpdate, DwellOptionsJs as DwellOptions } fro
 // ---------------------------------------------------------------------------
 
 export type GeoEvent =
-  | { kind: 'enter';              id: string; geofence: string; t_ms: number }
-  | { kind: 'exit';               id: string; geofence: string; t_ms: number }
-  | { kind: 'approach';           id: string; zone: string;     t_ms: number }
-  | { kind: 'recede';             id: string; zone: string;     t_ms: number }
+  | { kind: 'enter';              id: string; zone: string;          t_ms: number }
+  | { kind: 'exit';               id: string; zone: string;          t_ms: number }
+  | { kind: 'approach';           id: string; circle: string;        t_ms: number }
+  | { kind: 'recede';             id: string; circle: string;        t_ms: number }
   /** `region` is `null` when the entity left all catalog regions (unassigned). */
   | { kind: 'assignment_changed'; id: string; region: string | null; t_ms: number }
 
@@ -38,16 +38,16 @@ export class GeoEngine {
     this.node = new GeoEngineNode()
   }
 
-  registerGeofence(id: string, polygon: object, dwell?: DwellOptionsJs): void {
-    this.node.registerGeofence(id, polygon, dwell ?? null)
+  registerZone(id: string, polygon: object, dwell?: DwellOptionsJs): void {
+    this.node.registerZone(id, polygon, dwell ?? null)
   }
 
   registerCatalogRegion(id: string, polygon: object): void {
     this.node.registerCatalogRegion(id, polygon)
   }
 
-  registerRadiusZone(id: string, cx: number, cy: number, r: number): void {
-    this.node.registerRadiusZone(id, cx, cy, r)
+  registerCircle(id: string, cx: number, cy: number, r: number): void {
+    this.node.registerCircle(id, cx, cy, r)
   }
 
   ingest(updates: PointUpdateJs[]): GeoEvent[] {

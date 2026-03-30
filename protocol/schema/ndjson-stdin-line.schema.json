@@ -24,7 +24,7 @@
       "type": "object",
       "required": ["type", "id", "polygon"],
       "properties": {
-        "type": { "const": "register_geofence" },
+        "type": { "const": "register_zone" },
         "id": { "type": "string" },
         "polygon": {
           "$ref": "geojson-polygon-geometry.schema.json#/$defs/PolygonGeometry"

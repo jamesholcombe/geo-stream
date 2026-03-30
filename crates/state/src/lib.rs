@@ -1,12 +1,12 @@
-//! Per-entity geofence membership and deterministic spatial events.
+//! Per-entity zone membership and deterministic spatial events.
 
 use std::collections::{BTreeSet, HashMap};
 
-/// Minimum continuous time inside / outside before emitting enter / exit for a geofence.
+/// Minimum continuous time inside / outside before emitting enter / exit for a zone.
 ///
 /// `None` for a field means **no minimum** (immediate enter or exit when geometry changes).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct GeofenceDwell {
+pub struct ZoneDwell {
     /// Emit [`Event::Enter`] only after the point has been inside the polygon for this many ms.
     pub min_inside_ms: Option<u64>,
     /// Emit [`Event::Exit`] only after the point has been outside for this many ms (debounced exit).
@@ -20,11 +20,11 @@ pub struct EntityState {
     /// Milliseconds since Unix epoch for the last processed update (`None` if never updated).
     pub last_t_ms: Option<u64>,
     pub inside: BTreeSet<String>,
-    /// Geofence id → first `at_ms` seen inside while waiting for [`GeofenceDwell::min_inside_ms`].
-    pub geofence_enter_pending: HashMap<String, u64>,
-    /// Geofence id → first `at_ms` seen outside while logically inside (waiting for [`GeofenceDwell::min_outside_ms`]).
-    pub geofence_exit_pending: HashMap<String, u64>,
-    pub inside_radius: BTreeSet<String>,
+    /// Zone id → first `at_ms` seen inside while waiting for [`ZoneDwell::min_inside_ms`].
+    pub zone_enter_pending: HashMap<String, u64>,
+    /// Zone id → first `at_ms` seen outside while logically inside (waiting for [`ZoneDwell::min_outside_ms`]).
+    pub zone_exit_pending: HashMap<String, u64>,
+    pub inside_circle: BTreeSet<String>,
     pub catalog_region: Option<String>,
 }
 
@@ -33,22 +33,22 @@ pub struct EntityState {
 pub enum Event {
     Enter {
         id: String,
-        geofence: String,
+        zone: String,
         t_ms: u64,
     },
     Exit {
         id: String,
-        geofence: String,
+        zone: String,
         t_ms: u64,
     },
     Approach {
         id: String,
-        zone: String,
+        circle: String,
         t_ms: u64,
     },
     Recede {
         id: String,
-        zone: String,
+        circle: String,
         t_ms: u64,
     },
     AssignmentChanged {
@@ -58,7 +58,7 @@ pub enum Event {
     },
 }
 
-/// Compute enter/exit events from geofence membership set diff.
+/// Compute enter/exit events from zone membership set diff.
 pub fn membership_transitions(
     entity_id: &str,
     previous: &BTreeSet<String>,
@@ -69,21 +69,21 @@ pub fn membership_transitions(
     for gid in current.difference(previous) {
         out.push(Event::Enter {
             id: entity_id.to_string(),
-            geofence: gid.clone(),
+            zone: gid.clone(),
             t_ms,
         });
     }
     for gid in previous.difference(current) {
         out.push(Event::Exit {
             id: entity_id.to_string(),
-            geofence: gid.clone(),
+            zone: gid.clone(),
             t_ms,
         });
     }
     out
 }
 
-pub fn radius_membership_transitions(
+pub fn circle_membership_transitions(
     entity_id: &str,
     previous: &BTreeSet<String>,
     current: &BTreeSet<String>,
@@ -93,14 +93,14 @@ pub fn radius_membership_transitions(
     for gid in current.difference(previous) {
         out.push(Event::Approach {
             id: entity_id.to_string(),
-            zone: gid.clone(),
+            circle: gid.clone(),
             t_ms,
         });
     }
     for gid in previous.difference(current) {
         out.push(Event::Recede {
             id: entity_id.to_string(),
-            zone: gid.clone(),
+            circle: gid.clone(),
             t_ms,
         });
     }
@@ -124,20 +124,20 @@ pub fn assignment_transition(
     }
 }
 
-/// Geofence enter/exit with optional dwell / exit debounce.
+/// Zone enter/exit with optional dwell / exit debounce.
 ///
 /// `physical_inside` is the polygon query at the current point. `logical_inside` is the set the
-/// engine treats as “inside” for events (updated by this function). Pending maps cancel when the
+/// engine treats as "inside" for events (updated by this function). Pending maps cancel when the
 /// entity bounces before thresholds elapse.
 #[allow(clippy::too_many_arguments)]
-pub fn geofence_membership_with_dwell(
+pub fn zone_membership_with_dwell(
     entity_id: &str,
     at_ms: u64,
     physical_inside: &BTreeSet<String>,
     logical_inside: &mut BTreeSet<String>,
     enter_pending: &mut HashMap<String, u64>,
     exit_pending: &mut HashMap<String, u64>,
-    dwell_by_id: &HashMap<String, GeofenceDwell>,
+    dwell_by_id: &HashMap<String, ZoneDwell>,
     out: &mut Vec<Event>,
 ) {
     let mut zone_ids: BTreeSet<String> = logical_inside.iter().cloned().collect();
@@ -165,7 +165,7 @@ pub fn geofence_membership_with_dwell(
                 enter_pending.remove(&z);
                 out.push(Event::Enter {
                     id: entity_id.to_string(),
-                    geofence: z.clone(),
+                    zone: z.clone(),
                     t_ms: at_ms,
                 });
             } else {
@@ -178,7 +178,7 @@ pub fn geofence_membership_with_dwell(
                         enter_pending.remove(&z);
                         out.push(Event::Enter {
                             id: entity_id.to_string(),
-                            geofence: z.clone(),
+                            zone: z.clone(),
                             t_ms: at_ms,
                         });
                     }
@@ -195,7 +195,7 @@ pub fn geofence_membership_with_dwell(
                 exit_pending.remove(&z);
                 out.push(Event::Exit {
                     id: entity_id.to_string(),
-                    geofence: z.clone(),
+                    zone: z.clone(),
                     t_ms: at_ms,
                 });
             } else {
@@ -208,7 +208,7 @@ pub fn geofence_membership_with_dwell(
                         exit_pending.remove(&z);
                         out.push(Event::Exit {
                             id: entity_id.to_string(),
-                            geofence: z.clone(),
+                            zone: z.clone(),
                             t_ms: at_ms,
                         });
                     }
@@ -230,32 +230,20 @@ pub fn sort_events_deterministic(events: &mut [Event]) {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum EventTier {
-    Geofence = 0,
-    Radius = 1,
+    Zone = 0,
+    Circle = 1,
     Assignment = 2,
 }
 
 fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
     match e {
-        Event::Enter { id, geofence, t_ms } => (
-            id.as_str(),
-            *t_ms,
-            EventTier::Geofence,
-            geofence.as_str(),
-            0,
-        ),
-        Event::Exit { id, geofence, t_ms } => (
-            id.as_str(),
-            *t_ms,
-            EventTier::Geofence,
-            geofence.as_str(),
-            1,
-        ),
-        Event::Approach { id, zone, t_ms } => {
-            (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 0)
+        Event::Enter { id, zone, t_ms } => (id.as_str(), *t_ms, EventTier::Zone, zone.as_str(), 0),
+        Event::Exit { id, zone, t_ms } => (id.as_str(), *t_ms, EventTier::Zone, zone.as_str(), 1),
+        Event::Approach { id, circle, t_ms } => {
+            (id.as_str(), *t_ms, EventTier::Circle, circle.as_str(), 0)
         }
-        Event::Recede { id, zone, t_ms } => {
-            (id.as_str(), *t_ms, EventTier::Radius, zone.as_str(), 1)
+        Event::Recede { id, circle, t_ms } => {
+            (id.as_str(), *t_ms, EventTier::Circle, circle.as_str(), 1)
         }
         Event::AssignmentChanged { id, region, t_ms } => {
             let r = region.as_deref().unwrap_or("");
@@ -278,7 +266,7 @@ mod tests {
         assert_eq!(ev.len(), 1);
         assert!(matches!(
             &ev[0],
-            Event::Enter { id, geofence, t_ms: 42 } if id == "e1" && geofence == "z1"
+            Event::Enter { id, zone, t_ms: 42 } if id == "e1" && zone == "z1"
         ));
     }
 
@@ -319,7 +307,7 @@ mod tests {
             },
             Event::Enter {
                 id: "a".into(),
-                geofence: "f".into(),
+                zone: "f".into(),
                 t_ms: 1,
             },
         ];
@@ -332,7 +320,7 @@ mod tests {
         let mut dwell = HashMap::new();
         dwell.insert(
             "z".into(),
-            GeofenceDwell {
+            ZoneDwell {
                 min_inside_ms: Some(100),
                 min_outside_ms: None,
             },
@@ -343,20 +331,18 @@ mod tests {
         let mut xp = HashMap::new();
         let mut out = Vec::new();
 
-        geofence_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        zone_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         assert!(out.is_empty());
         assert!(!log.contains("z"));
 
-        geofence_membership_with_dwell(
-            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
+        zone_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         assert!(out.is_empty());
 
-        geofence_membership_with_dwell(
+        zone_membership_with_dwell(
             "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
         );
         assert_eq!(out.len(), 1);
-        assert!(matches!(&out[0], Event::Enter { geofence, t_ms: 100, .. } if geofence == "z"));
+        assert!(matches!(&out[0], Event::Enter { zone, t_ms: 100, .. } if zone == "z"));
         assert!(log.contains("z"));
     }
 
@@ -365,7 +351,7 @@ mod tests {
         let mut dwell = HashMap::new();
         dwell.insert(
             "z".into(),
-            GeofenceDwell {
+            ZoneDwell {
                 min_inside_ms: None,
                 min_outside_ms: Some(100),
             },
@@ -376,19 +362,19 @@ mod tests {
         let mut xp = HashMap::new();
         let mut out = Vec::new();
 
-        geofence_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        zone_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         assert!(out.is_empty());
 
         phys.clear();
-        geofence_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        zone_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         assert!(out.is_empty());
         assert!(log.contains("z"));
 
-        geofence_membership_with_dwell(
+        zone_membership_with_dwell(
             "e", 100, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
         );
         assert_eq!(out.len(), 1);
-        assert!(matches!(&out[0], Event::Exit { geofence, t_ms: 100, .. } if geofence == "z"));
+        assert!(matches!(&out[0], Event::Exit { zone, t_ms: 100, .. } if zone == "z"));
         assert!(!log.contains("z"));
     }
 
@@ -397,7 +383,7 @@ mod tests {
         let mut dwell = HashMap::new();
         dwell.insert(
             "z".into(),
-            GeofenceDwell {
+            ZoneDwell {
                 min_inside_ms: Some(100),
                 min_outside_ms: None,
             },
@@ -408,11 +394,9 @@ mod tests {
         let mut xp = HashMap::new();
         let mut out = Vec::new();
 
-        geofence_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
+        zone_membership_with_dwell("e", 0, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         phys.clear();
-        geofence_membership_with_dwell(
-            "e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out,
-        );
+        zone_membership_with_dwell("e", 50, &phys, &mut log, &mut ep, &mut xp, &dwell, &mut out);
         assert!(out.is_empty());
         assert!(ep.is_empty());
     }

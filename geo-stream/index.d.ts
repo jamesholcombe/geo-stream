@@ -3,14 +3,14 @@
 export declare class GeoEngineNode {
   constructor()
   /**
-   * Register a named geofence from a GeoJSON Polygon object.
+   * Register a named zone from a GeoJSON Polygon object.
    * Optionally provide dwell thresholds to debounce enter/exit events.
    */
-  registerGeofence(id: string, polygon: any, dwell?: DwellOptionsJs | undefined | null): void
+  registerZone(id: string, polygon: any, dwell?: DwellOptionsJs | undefined | null): void
   /** Register a named catalog region from a GeoJSON Polygon object. */
   registerCatalogRegion(id: string, polygon: any): void
-  /** Register a named radius zone by center point and radius (same units as coordinates). */
-  registerRadiusZone(id: string, cx: number, cy: number, r: number): void
+  /** Register a named circle by center point and radius (same units as coordinates). */
+  registerCircle(id: string, cx: number, cy: number, r: number): void
   /**
    * Process a batch of point updates and return the resulting events.
    * Updates are sorted by entity ID then timestamp before processing.

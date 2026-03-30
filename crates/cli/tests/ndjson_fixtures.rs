@@ -34,5 +34,5 @@ fn radius_boundary_inclusive_emits_approach_only() {
     let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
     assert_eq!(v["event"], "approach");
     assert_eq!(v["id"], "e1");
-    assert_eq!(v["zone"], "r1");
+    assert_eq!(v["circle"], "r1");
 }

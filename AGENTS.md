@@ -113,7 +113,7 @@ Do **not** hardcode spatial behaviour like:
 
 ```rust
 match rule_type {
-    Geofence => { /* ... */ }
+    Zone => { /* ... */ }
 }
 ```
 
@@ -135,7 +135,7 @@ The spatial crate **must**:
 - Support efficient point → region lookup.
 - Avoid full scans where an index applies.
 
-**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for geofences and catalog regions. **Radius zones** are also R-tree indexed. Zones are registered incrementally (per insert), not rebuilt each update.
+**As implemented:** `NaiveSpatialIndex` uses an **R-tree** (`rstar`) on polygon bounding boxes with exact `contains` refinement for zones and catalog regions. **Circles** are also R-tree indexed. Zones are registered incrementally (per insert), not rebuilt each update.
 
 ### 6. Protocol is a contract
 
@@ -201,13 +201,13 @@ These differ from the target model above; adapters and tests should match **what
 **Engine surface** (`crates/engine`):
 
 - Trait `GeoEngine`: zone registration + **`process_event(&mut self, PointUpdate) -> Vec<Event>`**.
-- **`Engine`**: `process_batch`, **`with_rules`**, **`register_geofence_with_dwell`** (`GeofenceDwell`: min inside before Enter, min outside before Exit). Plain **`register_geofence`** uses default (instant) dwell. Default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
+- **`Engine`**: `process_batch`, **`with_rules`**, **`register_zone_with_dwell`** (`ZoneDwell`: min inside before Enter, min outside before Exit). Plain **`register_zone`** uses default (instant) dwell. Default **`SpatialRule`** pipeline in `crates/engine/src/rules.rs`.
 - Input update: `PointUpdate { id, x, y, t_ms }` (Unix epoch milliseconds). Wire JSON field `t` in adapters.
 - Concrete type: `Engine` backed by `spatial::NaiveSpatialIndex` and `HashMap<String, EntityState>`.
 
 **Emitted events** (`crates/state`): `Event` is an enum — `Enter` / `Exit`, `Approach` / `Recede` (radius), `AssignmentChanged` (catalog); each variant includes **`t_ms`** (same as the causing `PointUpdate`). After `process_batch`, event order is deterministic (`sort_events_deterministic`).
 
-**Per-entity state** (`crates/state`): `EntityState` holds `position`, `last_t_ms`, geofence membership plus **`geofence_enter_pending` / `geofence_exit_pending`** (dwell timers), radius set, and `catalog_region`.
+**Per-entity state** (`crates/state`): `EntityState` holds `position`, `last_t_ms`, zone membership plus **`zone_enter_pending` / `zone_exit_pending`** (dwell timers), radius set, and `catalog_region`.
 
 **Supporting crate:** `crates/polygon-json` parses GeoJSON polygons for HTTP and stdin-stdout adapters (not used inside `crates/engine`).
 
@@ -226,9 +226,9 @@ Event → Engine → Rules → State transition → Output events
 The project currently:
 
 - **API:** `process_event` is primary; **`process_batch`** for buffered NDJSON/HTTP batches. CLI defaults `batch_size` to 1 (one `process_batch` per update line).
-- **Zone kinds:** Geofences (enter/exit), catalog regions (assignment / tie-break by smallest id), radius zones (approach/recede).
+- **Zone kinds:** Zones (enter/exit), catalog regions (assignment / tie-break by smallest id), circles (approach/recede).
 - **Spatial:** `SpatialIndex` trait exists; `NaiveSpatialIndex` implements R-tree–accelerated polygon queries plus linear radius checks.
-- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: geofence → corridor → radius → catalog).
+- **`SpatialRule` pipeline** in `crates/engine/src/rules.rs` (default: zone → circle → catalog).
 - **Adapters:** stdin-stdout calls **`Engine::process_batch`**; `run()` is **`&mut Engine`** (not generic over `GeoEngine`).
 - **Protocol:** NDJSON wire contract under `protocol/ndjson.md` (pre-release).
 
