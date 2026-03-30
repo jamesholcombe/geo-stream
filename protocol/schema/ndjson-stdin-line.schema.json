@@ -50,7 +50,7 @@
       "type": "object",
       "required": ["type", "id", "center", "radius"],
       "properties": {
-        "type": { "const": "register_radius" },
+        "type": { "const": "register_circle" },
         "id": { "type": "string" },
         "center": {
           "type": "array",
