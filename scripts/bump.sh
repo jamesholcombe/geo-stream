@@ -7,6 +7,21 @@ set -euo pipefail
 
 BUMP=${1:?Usage: scripts/bump.sh [patch|minor|major]}
 
+# Stash any uncommitted changes so they don't end up in the bump commit
+STASHED=false
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  git stash push -m "pre-bump stash"
+  STASHED=true
+fi
+
+# Always pop the stash on exit (success or failure)
+pop_stash() {
+  if [ "$STASHED" = true ]; then
+    git stash pop
+  fi
+}
+trap pop_stash EXIT
+
 CURRENT=$(cat version.txt | tr -d '[:space:]')
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 

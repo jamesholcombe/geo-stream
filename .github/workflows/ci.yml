@@ -56,24 +56,37 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
+    outputs:
+      tagged: ${{ steps.push_tag.outputs.tagged }}
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push tag if version not yet released
+        id: push_tag
         run: |
           VERSION=$(cat version.txt | tr -d '[:space:]')
           TAG="v$VERSION"
           echo "Current version: $TAG"
           if git ls-remote --tags origin "$TAG" | grep -q .; then
             echo "Tag $TAG already exists — skipping."
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag "$TAG"
             git push origin "$TAG"
-            echo "Pushed tag $TAG — publish workflow will now run."
+            echo "Pushed tag $TAG."
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Publish
+    needs: tag-release
+    if: needs.tag-release.outputs.tagged == 'true'
+    uses: ./.github/workflows/publish.yml
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
