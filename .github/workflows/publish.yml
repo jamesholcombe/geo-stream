@@ -122,8 +122,9 @@ jobs:
 
       - name: Create GitHub release
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
+          TAG="v$(cat version.txt | tr -d '[:space:]')"
+          gh release create "$TAG" \
+            --title "$TAG" \
             --generate-notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
