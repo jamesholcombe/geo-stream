@@ -87,6 +87,8 @@ jobs:
     name: Publish
     needs: tag-release
     if: needs.tag-release.outputs.tagged == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/publish.yml
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
