@@ -41,6 +41,14 @@ This document is the canonical reference for past, present, and future developme
 - **NAPI (Node.js)**: native Rust bindings via NAPI; `GeoEngine` class with `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`
 - **Protocol**: NDJSON wire contract at `protocol/ndjson.md`, JSON Schema under `protocol/schema/`
 
+### TypeScript package (`geo-stream/`)
+
+- `GeoEngine` typed wrapper with `GeoEvent` discriminated union and `GeoJsonPolygonInput` (uses `@types/geojson`)
+- `GeoEventEmitter` (`/emitter`) — wraps `GeoEngine` as a Node.js `EventEmitter`; fully typed `on`/`once`/`off` overloads per event kind
+- `GeoStreamKafka` (`/kafka`) — consumes `PointUpdate` JSON from a Kafka topic, publishes `GeoEvent` JSON to an output topic; structural typing (no hard `kafkajs` dep)
+- `GeoStreamRedis` (`/redis`) — `XREAD BLOCK` poll loop on a Redis input stream, `XADD` to output stream; structural typing (no hard `ioredis` dep)
+- 38 unit tests across all adapters using `node:test` + `tsx`; no native binary or live broker required
+
 ### Crate structure
 
 ```
@@ -48,8 +56,9 @@ crates/engine/              — GeoEngine, Engine, SpatialRule pipeline
 crates/state/               — EntityState, Event enum, membership transitions
 crates/spatial/             — Zone, Circle, NaiveSpatialIndex (R-tree), GeoJSON polygon parsing
 crates/adapters/stdin-stdout/
-crates/adapters/napi/       — Node.js NAPI bindings
+crates/adapters/napi/       — Node.js NAPI bindings (compiled into geo-stream/ npm package)
 crates/cli/                 — geo-stream binary
+geo-stream/                 — npm package: typed wrappers + TypeScript adapters
 ```
 
 ### Tooling
@@ -114,14 +123,19 @@ These make geo-stream useful beyond direct Rust embedding.
 
 ### Client SDKs
 
-- [x] **TypeScript/Node.js SDK**: NAPI bindings (`crates/adapters/napi`); `GeoEngine` class; `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`; typed `GeoEvent` discriminated union; pre-built native binaries for macOS/Linux/Windows
+- [x] **TypeScript/Node.js SDK**: NAPI bindings (`crates/adapters/napi`); `GeoEngine` class; `registerZone`, `registerCatalogRegion`, `registerCircle`, `ingest`; typed `GeoEvent` discriminated union and `GeoJsonPolygonInput`; pre-built native binaries for macOS/Linux/Windows; npm README
 - [ ] **Python SDK**: subprocess or HTTP; matches TypeScript API shape
 
-### Adapters
+### TypeScript adapters
 
-- [ ] **Kafka consumer adapter**: consume location updates from a Kafka topic, emit events to another topic; offset commit after processing
-- [ ] **Redis Streams adapter**: XREAD input, XADD output; compatible with Redis cluster
-- [ ] **File ingestion adapter**: replay NDJSON or CSV history; useful for backtesting zone configurations
+- [x] **EventEmitter** (`/emitter`): wraps `GeoEngine` as a Node.js `EventEmitter`; typed `on`/`once`/`off` overloads per event kind; no extra deps
+- [x] **Kafka** (`/kafka`): `PointUpdate` JSON in, `GeoEvent` JSON out via Kafka topics; structural typing — works with any kafkajs-compatible client
+- [x] **Redis Streams** (`/redis`): `XREAD BLOCK` input, `XADD` output; structural typing — works with ioredis and node-redis v4+
+- [ ] **WebSockets**: bidirectional adapter — devices push GPS fixes over WS, events pushed back on the same connection; natural fit for live dashboards and mobile clients
+- [ ] **MQTT**: subscribe to `devices/{id}/location`, publish to `events/{id}`; `mqtt.js` compatible; low overhead, good for IoT/embedded device fleets
+- [ ] **HTTP SSE**: long-lived HTTP response streaming `GeoEvent` as `data: {...}\n\n`; browser-native, no WS upgrade needed; good for read-only dashboards
+- [ ] **Webhook**: receive location updates via HTTP POST, emit `GeoEvent` to a configurable outbound URL; useful for third-party SaaS GPS integrations
+- [ ] **NDJSON file replay** (TypeScript): read a `.ndjson` history file, process through `GeoEngine`, collect events; useful for backtesting zone configurations
 
 ### Zone management
 
