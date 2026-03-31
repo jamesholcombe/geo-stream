@@ -171,6 +171,127 @@ interface DwellOptions {
 
 The engine is coordinate-system-agnostic. Use degrees (WGS-84), metres, or any other consistent unit. `x` = easting/longitude, `y` = northing/latitude.
 
+---
+
+## Adapters
+
+### EventEmitter — `@jamesholcombe/geo-stream/emitter`
+
+Wraps `GeoEngine` as a Node.js `EventEmitter`. Spatial events are emitted by kind rather than returned from `ingest()`. Each event kind has a fully typed listener signature.
+
+```ts
+import { GeoEventEmitter } from '@jamesholcombe/geo-stream/emitter'
+
+const engine = new GeoEventEmitter()
+
+engine.registerZone('warehouse', {
+  type: 'Polygon',
+  coordinates: [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+})
+
+engine.on('enter', (ev) => console.log(ev.id, 'entered', ev.zone))
+engine.on('exit',  (ev) => console.log(ev.id, 'left',    ev.zone))
+engine.on('assignment_changed', (ev) => console.log(ev.id, '→', ev.region ?? 'unassigned'))
+
+// TypeScript narrows ev.zone / ev.circle / ev.region per event kind automatically.
+engine.ingest([{ id: 'truck-1', x: 1, y: 1, tMs: Date.now() }])
+```
+
+`GeoEventEmitter` exposes the same `registerZone`, `registerCatalogRegion`, and `registerCircle` methods as `GeoEngine`. All methods return `this` for chaining. No extra dependencies required.
+
+---
+
+### Kafka — `@jamesholcombe/geo-stream/kafka`
+
+Consumes `PointUpdate` JSON from a Kafka input topic, processes updates through a `GeoEngine`, and publishes `GeoEvent` JSON to an output topic.
+
+Uses structural typing — no hard dependency on `kafkajs`. Any Kafka client that satisfies the `KafkaConsumer` / `KafkaProducer` interfaces works.
+
+```ts
+import { Kafka } from 'kafkajs'
+import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+import { GeoStreamKafka } from '@jamesholcombe/geo-stream/kafka'
+
+const kafka = new Kafka({ brokers: ['localhost:9092'] })
+const engine = new GeoEngine()
+engine.registerZone('site', { type: 'Polygon', coordinates: [...] })
+
+const adapter = new GeoStreamKafka(engine, {
+  consumer:    kafka.consumer({ groupId: 'geo-stream' }),
+  producer:    kafka.producer(),
+  inputTopic:  'location-updates',
+  outputTopic: 'geo-events',
+  onParseError: (raw, err) => console.error('Bad message:', raw, err),
+})
+
+await adapter.connect()
+await adapter.start()  // subscribes and runs until stop() is called
+
+// ...later...
+await adapter.stop()
+```
+
+**Message format:**
+- Input — JSON `PointUpdate`: `{ "id": "truck-1", "x": 0.5, "y": 0.5, "tMs": 1700000000000 }`
+- Output — JSON `GeoEvent`: `{ "kind": "enter", "id": "truck-1", "zone": "site", "t_ms": 1700000000000 }`
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `consumer` | `KafkaConsumer` | required | Connected Kafka consumer |
+| `producer` | `KafkaProducer` | required | Connected Kafka producer |
+| `inputTopic` | `string` | required | Topic to consume `PointUpdate` messages from |
+| `outputTopic` | `string` | required | Topic to publish `GeoEvent` messages to |
+| `onParseError` | `function` | no-op | Called when a message cannot be parsed as a `PointUpdate` |
+
+---
+
+### Redis Streams — `@jamesholcombe/geo-stream/redis`
+
+Reads `PointUpdate` entries from a Redis input stream via `XREAD BLOCK`, processes updates through a `GeoEngine`, and appends `GeoEvent` entries to an output stream via `XADD`.
+
+Uses structural typing — no hard dependency on `ioredis`. Any Redis client that satisfies the `RedisStreamClient` interface works.
+
+```ts
+import Redis from 'ioredis'
+import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+import { GeoStreamRedis } from '@jamesholcombe/geo-stream/redis'
+
+const redis = new Redis()
+const engine = new GeoEngine()
+engine.registerZone('depot', { type: 'Polygon', coordinates: [...] })
+
+const adapter = new GeoStreamRedis(engine, {
+  client:       redis,
+  inputStream:  'location-updates',
+  outputStream: 'geo-events',
+})
+
+adapter.start()  // non-blocking — runs poll loop in the background
+
+// ...later...
+adapter.stop()
+```
+
+**Stream entry format:**
+- Input — field-value pairs: `id <entityId> x <lon> y <lat> t_ms <epoch_ms>`
+- Output — field-value pairs: one field per `GeoEvent` key, e.g. `kind enter id truck-1 zone depot t_ms 1700000000000`
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `client` | `RedisStreamClient` | required | Connected Redis client |
+| `inputStream` | `string` | required | Stream key to read `PointUpdate` entries from |
+| `outputStream` | `string` | required | Stream key to write `GeoEvent` entries to |
+| `batchSize` | `number` | `100` | Max entries per `XREAD` call |
+| `blockMs` | `number` | `1000` | Milliseconds to block waiting for new entries |
+| `startId` | `string` | `'$'` | Stream ID to begin reading from. Use `'0'` to replay from the start |
+| `onParseError` | `function` | no-op | Called when an entry cannot be parsed into a valid `PointUpdate` |
+
+---
+
 ## Examples
 
 More examples are in the [geo-stream repository](https://github.com/jamesholcombe/geo-stream/tree/main/examples/typescript):
