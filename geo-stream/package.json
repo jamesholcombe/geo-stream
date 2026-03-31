@@ -8,6 +8,18 @@
     ".": {
       "types": "./types.d.ts",
       "default": "./index.js"
+    },
+    "./emitter": {
+      "types": "./emitter.d.ts",
+      "default": "./emitter.js"
+    },
+    "./kafka": {
+      "types": "./kafka.d.ts",
+      "default": "./kafka.js"
+    },
+    "./redis": {
+      "types": "./redis.d.ts",
+      "default": "./redis.js"
     }
   },
   "files": [
@@ -15,6 +27,12 @@
     "index.d.ts",
     "types.js",
     "types.d.ts",
+    "emitter.js",
+    "emitter.d.ts",
+    "kafka.js",
+    "kafka.d.ts",
+    "redis.js",
+    "redis.d.ts",
     "README.md"
   ],
   "scripts": {
@@ -29,6 +47,7 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^3",
+    "@types/node": "^25.5.0",
     "typescript": "^5"
   },
   "napi": {
