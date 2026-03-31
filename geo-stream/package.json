@@ -40,6 +40,7 @@
     "build:debug": "napi build --platform --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir .",
     "compile": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test 'tests/**/*.test.ts'",
     "prepublishOnly": "npm run compile"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^3",
     "@types/node": "^25.5.0",
+    "tsx": "^4",
     "typescript": "^5"
   },
   "napi": {

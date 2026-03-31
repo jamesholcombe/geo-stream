@@ -21,8 +21,8 @@
  */
 
 import { EventEmitter } from "node:events";
-import { GeoEngine } from "./types.js";
 import type {
+  GeoEngine,
   GeoEvent,
   GeoJsonPolygonInput,
   PointUpdate,
@@ -39,9 +39,10 @@ type AssignmentChangedEvent = Extract<GeoEvent, { kind: "assignment_changed" }>;
 export class GeoEventEmitter extends EventEmitter {
   private _engine: GeoEngine;
 
-  constructor() {
+  constructor(engine?: GeoEngine) {
     super();
-    this._engine = new GeoEngine();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    this._engine = engine ?? new (require("./types.js") as { GeoEngine: new () => GeoEngine }).GeoEngine();
   }
 
   registerZone(
