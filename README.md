@@ -26,12 +26,13 @@ location update → └──────────────────┘
 
 ## Features
 
-- **Four zone types** — polygon zones,  circles, and catalog regions
+- **Four zone types** — polygon zones, circles, and catalog regions
 - **Dwell / debounce** — configurable `minInsideMs` / `minOutsideMs` thresholds per zone
 - **Polygon holes** — GeoJSON polygons with interior rings are supported natively
-- **Typed events** — discriminated union `GeoEvent` with full TypeScript inference
+- **Typed events** — discriminated union `GeoEvent` with full TypeScript inference; `GeoJsonPolygonInput` for zone registration
 - **Native performance** — Rust R-tree spatial index; no JS overhead on the hot path
 - **Embeddable** — use as a Node.js package, a Rust crate, or an NDJSON CLI
+- **TypeScript adapters** — EventEmitter, Kafka, and Redis Streams adapters included; no extra deps required
 
 ---
 
@@ -58,7 +59,7 @@ Pre-built native binaries are distributed for all supported platforms — no Rus
 ## Quick start
 
 ```typescript
-import { GeoEngine } from '@jamesholcombe/geo-stream'
+import { GeoEngine } from '@jamesholcombe/geo-stream/types'
 
 const engine = new GeoEngine()
 
@@ -139,19 +140,19 @@ All events are a discriminated union on `kind`. Switch exhaustively for compile-
 
 ```typescript
 type GeoEvent =
-  | { kind: 'enter';              id: string; zone: string;      t_ms: number }
-  | { kind: 'exit';               id: string; zone: string;      t_ms: number }
-  | { kind: 'approach';           id: string; zone: string;          t_ms: number }
-  | { kind: 'recede';             id: string; zone: string;          t_ms: number }
+  | { kind: 'enter';              id: string; zone: string;          t_ms: number }
+  | { kind: 'exit';               id: string; zone: string;          t_ms: number }
+  | { kind: 'approach';           id: string; circle: string;        t_ms: number }
+  | { kind: 'recede';             id: string; circle: string;        t_ms: number }
   | { kind: 'assignment_changed'; id: string; region: string | null; t_ms: number }
 ```
 
 | `kind` | Trigger | Key field |
 |--------|---------|-----------|
-| `enter` | Entity enters a zone | `zone` |
-| `exit` | Entity exits a zone | `zone` |
-| `approach` | Entity enters a circle | `zone` |
-| `recede` | Entity exits a circle | `zone` |
+| `enter` | Entity enters a polygon zone | `zone` |
+| `exit` | Entity exits a polygon zone | `zone` |
+| `approach` | Entity enters a circle | `circle` |
+| `recede` | Entity exits a circle | `circle` |
 | `assignment_changed` | Entity's catalog region changes | `region` (`null` = unassigned) |
 
 ---
@@ -171,6 +172,62 @@ cd examples/typescript
 npm install
 npx ts-node 01-basic-zone.ts
 ```
+
+---
+
+## TypeScript adapters
+
+The npm package ships three additional adapters. All use structural typing — no extra runtime dependencies.
+
+### EventEmitter — `@jamesholcombe/geo-stream/emitter`
+
+Wraps `GeoEngine` as a Node.js `EventEmitter` with fully typed `on`/`once`/`off` overloads per event kind:
+
+```typescript
+import { GeoEventEmitter } from '@jamesholcombe/geo-stream/emitter'
+
+const engine = new GeoEventEmitter()
+engine.registerZone('warehouse', polygon)
+
+engine.on('enter', (ev) => console.log(ev.id, 'entered', ev.zone))
+engine.on('exit',  (ev) => console.log(ev.id, 'left',    ev.zone))
+
+engine.ingest([{ id: 'truck-1', x: 1, y: 1, tMs: Date.now() }])
+```
+
+### Kafka — `@jamesholcombe/geo-stream/kafka`
+
+Consumes `PointUpdate` JSON from a Kafka topic and publishes `GeoEvent` JSON to an output topic. Compatible with any `kafkajs`-shaped client:
+
+```typescript
+import { GeoStreamKafka } from '@jamesholcombe/geo-stream/kafka'
+
+const adapter = new GeoStreamKafka(engine, {
+  consumer: kafka.consumer({ groupId: 'geo-stream' }),
+  producer: kafka.producer(),
+  inputTopic:  'location-updates',
+  outputTopic: 'geo-events',
+})
+await adapter.connect()
+await adapter.start()
+```
+
+### Redis Streams — `@jamesholcombe/geo-stream/redis`
+
+`XREAD BLOCK` poll loop on an input stream, `XADD` events to an output stream. Compatible with `ioredis` and `node-redis` v4+:
+
+```typescript
+import { GeoStreamRedis } from '@jamesholcombe/geo-stream/redis'
+
+const adapter = new GeoStreamRedis(engine, {
+  client:       redis,
+  inputStream:  'location-updates',
+  outputStream: 'geo-events',
+})
+adapter.start()
+```
+
+See [`geo-stream/README.md`](geo-stream/README.md) for full API documentation including options tables.
 
 ---
 
@@ -253,7 +310,8 @@ docker run --rm -i geo-stream < examples/sample-input.ndjson
 
 | Path | Role |
 |------|------|
-| `crates/adapters/napi` | TypeScript / Node.js NAPI bindings (`geo-stream` npm package) |
+| `geo-stream/` | npm package — `GeoEngine` wrapper, typed adapters (EventEmitter, Kafka, Redis), README |
+| `crates/adapters/napi` | Rust NAPI bindings compiled into the npm package |
 | `crates/engine` | `GeoEngine` trait, `Engine`, `SpatialRule` pipeline |
 | `crates/spatial` | Point-in-polygon, `SpatialIndex`, R-tree |
 | `crates/state` | `EntityState`, `Event` enum |
