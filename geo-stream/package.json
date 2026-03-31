@@ -14,7 +14,8 @@
     "index.js",
     "index.d.ts",
     "types.js",
-    "types.d.ts"
+    "types.d.ts",
+    "README.md"
   ],
   "scripts": {
     "build": "napi build --platform --release --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir .",
@@ -22,6 +23,9 @@
     "compile": "tsc",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run compile"
+  },
+  "dependencies": {
+    "@types/geojson": "^7946.0.16"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3",
