@@ -1,58 +1,87 @@
 ---
+id: intro
 slug: /
+title: Introduction
 sidebar_position: 1
+description: geo-stream turns location updates into spatial events — in-process, no infrastructure required.
 ---
 
-# Introduction
+Entities move through space. The engine tracks which zones they're in. When membership changes, events fire.
 
-geo-stream turns a stream of `{ id, x, y, tMs }` location updates into structured spatial events — in-process, with no external dependencies.
+That is the entire mental model. You define the zones once, feed in location updates, and receive typed events — `enter`, `exit`, `approach`, `recede`, `assignment_changed` — whenever something meaningful happens. No polling, no queries, no database.
 
-Hand-rolling geofencing requires tracking membership state per entity and per zone, debouncing boundary noise so a vehicle oscillating near a fence doesn't flood you with spurious enter/exit pairs, and ensuring deterministic event ordering across heterogeneous zone types. geo-stream handles all of this. You register zones once, call `ingest()` with batches of location updates, and receive typed events.
+## How the system thinks
+
+Three concepts are enough to reason about any geo-stream behavior:
+
+**Entities** are anything you track: drivers, vehicles, assets, people. Each has an `id` and moves through space as location updates arrive.
+
+**State** is what the engine remembers: which zones each entity is currently inside, which catalog region it belongs to, its last known position. State is updated on every `ingest()` call.
+
+**Events** fire when state changes. An entity entering a zone produces `enter`. Leaving produces `exit`. Moving from one catalog region to another produces `assignment_changed`. Events carry the entity `id`, the zone or region identifier, and the timestamp (`t_ms`) of the update that caused the transition.
+
+Nothing happens between updates. The engine is event-driven: you push updates in, events come out, the rest of the time it is quiet.
 
 ## Quick start
+
+A delivery fleet: drivers enter a warehouse to pick up loads, then leave.
 
 ```bash
 npm install @jamesholcombe/geo-stream
 ```
 
 ```typescript
-import { GeoEngine, GeoEvent } from '@jamesholcombe/geo-stream/types'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
-// Register a polygon zone
-engine.registerZone('city-centre', {
+// Register the warehouse as a polygon zone
+engine.registerZone('warehouse', {
   type: 'Polygon',
-  coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+  coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
 })
 
-// Ingest a location update
-const events = engine.ingest([
-  { id: 'vehicle-1', x: 0.5, y: 0.5, tMs: Date.now() },
+// Driver arrives at the warehouse
+const arrivals = engine.ingest([
+  { id: 'driver-42', x: 5, y: 5, tMs: Date.now() },
 ])
 
-// Handle events
-for (const ev of events) {
-  switch (ev.kind) {
-    case 'enter':
-      console.log(`${ev.id} entered zone ${ev.zone}`)
-      // vehicle-1 entered zone city-centre
-      break
-    case 'exit':
-      console.log(`${ev.id} left zone ${ev.zone}`)
-      break
+for (const ev of arrivals) {
+  if (ev.kind === 'enter') {
+    console.log(`${ev.id} entered ${ev.zone} — assign pickup job`)
+    // driver-42 entered warehouse — assign pickup job
+  }
+}
+
+// Driver departs
+const departures = engine.ingest([
+  { id: 'driver-42', x: 50, y: 50, tMs: Date.now() + 300_000 },
+])
+
+for (const ev of departures) {
+  if (ev.kind === 'exit') {
+    console.log(`${ev.id} left ${ev.zone} — job in progress`)
+    // driver-42 left warehouse — job in progress
   }
 }
 ```
 
-## Zone types
+## The primitives
 
-| Zone type | Registration method | Events emitted |
-|-----------|--------------------|--------------:|
-| Polygon zone | `registerZone` | `enter` + `exit` |
+Three zone types produce four pairs of events:
+
+| Zone type | Registration | Events |
+|-----------|-------------|--------|
+| Polygon zone | `registerZone` | `enter` / `exit` |
+| Circle | `registerCircle` | `approach` / `recede` |
 | Catalog region | `registerCatalogRegion` | `assignment_changed` |
-| Circle | `registerCircle` | `approach` + `recede` |
 
-## What it is not
+All three coexist on the same engine. A single location update is evaluated against every registered zone and region simultaneously.
 
-geo-stream is not a GIS platform, a spatial database, or a map visualisation tool. It is an embeddable stream processor: you call it directly from Node.js, it holds state in memory, and it returns typed events synchronously. There is no server to run, no schema to migrate, and no network calls.
+Rules and sequences let you compose these primitives further — emit a custom event when an entity enters a zone at speed, or detect when a driver completes a multi-stop route in order. See [Rules and Sequences](./rules).
+
+## No infrastructure required
+
+geo-stream is a Rust library compiled to a native Node.js module. There is no server to run, no schema to migrate, no network calls. Drop it into any Node.js process and it works immediately, with state held in memory alongside your application.
+
+For workloads that already use a message broker, ready-made adapters connect the engine to [Kafka and Redis Streams](./adapters).

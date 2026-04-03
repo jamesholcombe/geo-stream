@@ -1,15 +1,25 @@
 ---
+id: zone-types
+title: Zone Types
 sidebar_position: 3
+description: Polygon zones, circles, and catalog regions — the three zone types and the events they emit.
 ---
 
-# Zone Types
+geo-stream has three zone types. Each emits a distinct pair of events and is registered once at setup time.
 
-geo-stream supports three zone types, each emitting a distinct set of events.
+All registration methods return `this`, so they chain:
+
+```typescript
+const engine = new GeoEngine()
+  .registerZone('warehouse', warehousePolygon)
+  .registerCircle('depot-beacon', 7, 7, 1.5)
+  .registerCatalogRegion('district-north', northPolygon)
+```
 
 ## Polygon Zones
 
 ```typescript
-engine.registerZone(id: string, polygon: GeoJsonPolygonInput, dwell?: DwellOptions): void
+engine.registerZone(id: string, polygon: GeoJsonPolygonInput, options?: ZoneOptions): this
 ```
 
 Polygon zones emit `enter` when an entity moves inside, and `exit` when it moves outside.
@@ -23,16 +33,24 @@ Polygon zones emit `enter` when an entity moves inside, and `exit` when it moves
 
 Polygon holes (interior rings) are fully supported — a point inside a hole is considered outside the zone.
 
-An optional `dwell` parameter lets you suppress spurious boundary crossings. See [Dwell Thresholds](./dwell) for details.
+An optional `dwell` threshold in `ZoneOptions` suppresses spurious boundary crossings from GPS noise. See [Dwell Thresholds](./dwell) for details.
+
+```typescript
+interface ZoneOptions {
+  dwell?: {
+    minInsideMs?: number   // ms entity must be continuously inside before 'enter' fires
+    minOutsideMs?: number  // ms entity must be continuously outside before 'exit' fires
+  }
+}
+```
 
 **Example:**
 
 ```typescript
-import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
-// Register a square zone from (0,0) to (1,1)
 engine.registerZone('city-centre', {
   type: 'Polygon',
   coordinates: [
@@ -52,12 +70,12 @@ const events = engine.ingest([
 ## Catalog Regions
 
 ```typescript
-engine.registerCatalogRegion(id: string, polygon: GeoJsonPolygonInput): void
+engine.registerCatalogRegion(id: string, polygon: GeoJsonPolygonInput): this
 ```
 
-Catalog regions represent mutually exclusive named areas such as districts, territories, or delivery zones. The engine emits `assignment_changed` when an entity's containing region changes.
+Catalog regions represent mutually exclusive named areas — delivery zones, service territories, districts. The engine emits `assignment_changed` when an entity's containing region changes.
 
-An entity is always assigned to **at most one region** — the lexicographically smallest matching ID when regions overlap. `assignment_changed` fires when the entity:
+An entity is assigned to **at most one region** at a time — the lexicographically smallest matching ID when regions overlap. `assignment_changed` fires when the entity:
 
 - Moves from one region into a different region
 - Enters a region from outside all regions
@@ -81,15 +99,12 @@ engine.registerCatalogRegion('district-south', {
 
 const t0 = 1_700_000_000_000
 
-// Entity starts in district-south
 engine.ingest([{ id: 'truck-1', x: 5, y: 2, tMs: t0 }])
 // [{ kind: 'assignment_changed', id: 'truck-1', region: 'district-south', t_ms: ... }]
 
-// Entity crosses into district-north
 engine.ingest([{ id: 'truck-1', x: 5, y: 8, tMs: t0 + 30_000 }])
 // [{ kind: 'assignment_changed', id: 'truck-1', region: 'district-north', t_ms: ... }]
 
-// Entity leaves all regions
 engine.ingest([{ id: 'truck-1', x: 50, y: 50, tMs: t0 + 60_000 }])
 // [{ kind: 'assignment_changed', id: 'truck-1', region: null, t_ms: ... }]
 ```
@@ -97,15 +112,15 @@ engine.ingest([{ id: 'truck-1', x: 50, y: 50, tMs: t0 + 60_000 }])
 ## Circles
 
 ```typescript
-engine.registerCircle(id: string, cx: number, cy: number, r: number): void
+engine.registerCircle(id: string, cx: number, cy: number, r: number): this
 ```
 
 Circles emit `approach` when an entity enters the radius, and `recede` when it exits.
 
-Containment is tested using Euclidean distance: an entity at `(x, y)` is inside the circle when `sqrt((x - cx)² + (y - cy)²) <= r`.
+Containment uses Euclidean distance: an entity at `(x, y)` is inside the circle when `sqrt((x - cx)² + (y - cy)²) <= r`.
 
 :::caution
-This is Euclidean distance, not geodesic. If your coordinates are WGS-84 longitude/latitude, `r` is measured in degrees, which is not constant across latitudes. For metre-accurate radius checks, use a projected coordinate system (such as a local UTM zone).
+This is Euclidean distance, not geodesic. If your coordinates are WGS-84 longitude/latitude, `r` is measured in degrees, which is not constant across latitudes. For metre-accurate radius checks, use a projected coordinate system such as a local UTM zone.
 :::
 
 **Example:**
@@ -116,11 +131,9 @@ engine.registerCircle('depot-beacon', 7, 7, 1.5)
 
 const t0 = 1_700_000_000_000
 
-// Entity moves into the circle
 engine.ingest([{ id: 'truck-1', x: 7.0, y: 7.0, tMs: t0 }])
 // [{ kind: 'approach', id: 'truck-1', circle: 'depot-beacon', t_ms: ... }]
 
-// Entity moves outside
 engine.ingest([{ id: 'truck-1', x: 20, y: 20, tMs: t0 + 30_000 }])
 // [{ kind: 'recede', id: 'truck-1', circle: 'depot-beacon', t_ms: ... }]
 ```

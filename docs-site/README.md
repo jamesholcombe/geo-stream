@@ -1,41 +1,21 @@
-# Website
+# geo-stream docs
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Documentation site for [geo-stream](https://github.com/jamesholcombe/geo-events), built with [Docusaurus](https://docusaurus.io/).
 
-## Installation
+Published at: **https://jamesholcombe.github.io/geo-stream/**
 
-```bash
-yarn
-```
-
-## Local Development
+## Local development
 
 ```bash
-yarn start
+npm install
+npm start     # starts dev server at localhost:3000
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Most changes are reflected live without restarting.
 
 ## Build
 
 ```bash
-yarn build
+npm run build    # output in build/
+npm run serve    # preview the production build locally
 ```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
-
-## Deployment
-
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.

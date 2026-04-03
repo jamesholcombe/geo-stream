@@ -13,7 +13,7 @@ const sidebars: SidebarsConfig = {
       label: 'Concepts',
       collapsible: true,
       collapsed: false,
-      items: ['zone-types', 'ingest', 'dwell'],
+      items: ['zone-types', 'ingest', 'dwell', 'rules'],
     },
     {
       type: 'category',
@@ -24,6 +24,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Integrations',
+      collapsible: true,
+      collapsed: false,
+      items: ['adapters'],
+    },
+    {
+      type: 'category',
       label: 'Examples',
       collapsible: true,
       collapsed: false,
@@ -31,6 +38,7 @@ const sidebars: SidebarsConfig = {
         'examples/basic-zone',
         'examples/multi-zone',
         'examples/dwell-debounce',
+        'examples/driver-dispatch',
       ],
     },
   ],
