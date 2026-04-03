@@ -1,10 +1,13 @@
-use engine::{Circle, Engine, GeoEngine as _, PointUpdate, Zone, ZoneDwell};
+use engine::{
+    Circle, ConfigurableRule, Engine, EngineOptions, EventKind, GeoEngine as _, PointUpdate,
+    RuleFilter, RuleTrigger, SequenceRule, Zone, ZoneDwell,
+};
 use napi_derive::napi;
 use serde::Serialize;
 use spatial::polygon_from_json_value;
 
 // ---------------------------------------------------------------------------
-// Input types -- #[napi(object)] generates TypeScript interfaces
+// Input types
 // ---------------------------------------------------------------------------
 
 #[napi(object)]
@@ -22,11 +25,73 @@ pub struct DwellOptionsJs {
     pub min_outside_ms: Option<i64>,
 }
 
+#[napi(object)]
+pub struct EngineOptionsJs {
+    /// Maximum historical position samples per entity. Default: 10.
+    pub history_size: Option<i32>,
+}
+
+/// A single trigger condition for a configurable rule.
+#[napi(object)]
+pub struct RuleTriggerJs {
+    /// One of: "enter", "exit", "approach", "recede".
+    pub event_kind: String,
+    /// The zone or circle id to watch.
+    pub target_id: String,
+}
+
+/// A single filter condition for a configurable rule.
+#[napi(object)]
+pub struct RuleFilterJs {
+    /// One of: "speed_above", "speed_below", "heading_between".
+    pub filter_type: String,
+    /// Speed threshold in units/s (used for speed_above / speed_below).
+    pub value: Option<f64>,
+    /// Start of heading range in degrees (used for heading_between).
+    pub from: Option<f64>,
+    /// End of heading range in degrees (used for heading_between).
+    pub to: Option<f64>,
+}
+
+/// Configuration for a user-defined rule.
+#[napi(object)]
+pub struct RuleConfigJs {
+    pub name: String,
+    pub triggers: Vec<RuleTriggerJs>,
+    pub filters: Vec<RuleFilterJs>,
+    /// Name of the emitted `rule` event.
+    pub emit: String,
+    /// Arbitrary JSON payload attached to every emitted event.
+    pub data: Option<serde_json::Value>,
+}
+
+/// Configuration for a sequence rule.
+#[napi(object)]
+pub struct SequenceConfigJs {
+    pub name: String,
+    /// Zone/circle ids that must be triggered (enter/approach) in order.
+    pub steps: Vec<String>,
+    /// Optional window in ms; sequence resets if not completed within this time.
+    pub within_ms: Option<i64>,
+}
+
 // ---------------------------------------------------------------------------
-// Event DTO -- serialized to serde_json::Value for the JS layer.
-// Uses `kind` tag (more idiomatic for JS than `event`).
-// `region` in AssignmentChanged is NOT skipped when None so JS consumers
-// receive `null` (unassigned) rather than an absent field.
+// Output types
+// ---------------------------------------------------------------------------
+
+/// Snapshot of current entity state returned from getEntityState / getEntities.
+#[napi(object)]
+pub struct EntityStateJs {
+    pub id: String,
+    pub x: f64,
+    pub y: f64,
+    pub t_ms: i64,
+    pub speed: Option<f64>,
+    pub heading: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// Event DTO
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -36,25 +101,57 @@ enum EventDto {
         id: String,
         zone: String,
         t_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Exit {
         id: String,
         zone: String,
         t_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Approach {
         id: String,
         circle: String,
         t_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Recede {
         id: String,
         circle: String,
         t_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     AssignmentChanged {
         id: String,
         region: Option<String>,
+        t_ms: u64,
+    },
+    Rule {
+        id: String,
+        name: String,
+        t_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
+        #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+        data: serde_json::Value,
+    },
+    SequenceComplete {
+        id: String,
+        sequence: String,
         t_ms: u64,
     },
 }
@@ -62,15 +159,131 @@ enum EventDto {
 impl From<engine::Event> for EventDto {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter { id, zone, t_ms } => EventDto::Enter { id, zone, t_ms },
-            engine::Event::Exit { id, zone, t_ms } => EventDto::Exit { id, zone, t_ms },
-            engine::Event::Approach { id, circle, t_ms } => EventDto::Approach { id, circle, t_ms },
-            engine::Event::Recede { id, circle, t_ms } => EventDto::Recede { id, circle, t_ms },
+            engine::Event::Enter {
+                id,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            } => EventDto::Enter {
+                id,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            },
+            engine::Event::Exit {
+                id,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            } => EventDto::Exit {
+                id,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            },
+            engine::Event::Approach {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            } => EventDto::Approach {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            },
+            engine::Event::Recede {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            } => EventDto::Recede {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
                 EventDto::AssignmentChanged { id, region, t_ms }
             }
+            engine::Event::Custom {
+                id,
+                name,
+                t_ms,
+                speed,
+                heading,
+                data,
+            } => EventDto::Rule {
+                id,
+                name,
+                t_ms,
+                speed,
+                heading,
+                data,
+            },
+            engine::Event::SequenceComplete { id, sequence, t_ms } => {
+                EventDto::SequenceComplete { id, sequence, t_ms }
+            }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Conversion helpers
+// ---------------------------------------------------------------------------
+
+fn parse_rule_config(js: RuleConfigJs) -> napi::Result<ConfigurableRule> {
+    let triggers = js
+        .triggers
+        .into_iter()
+        .map(|t| {
+            let kind = match t.event_kind.as_str() {
+                "enter" => Ok(EventKind::Enter),
+                "exit" => Ok(EventKind::Exit),
+                "approach" => Ok(EventKind::Approach),
+                "recede" => Ok(EventKind::Recede),
+                other => Err(napi::Error::from_reason(format!(
+                    "unknown event_kind: {other}"
+                ))),
+            }?;
+            Ok(RuleTrigger {
+                event_kind: kind,
+                target_id: t.target_id,
+            })
+        })
+        .collect::<napi::Result<Vec<_>>>()?;
+
+    let filters = js
+        .filters
+        .into_iter()
+        .map(|f| match f.filter_type.as_str() {
+            "speed_above" => Ok(RuleFilter::SpeedAbove(f.value.unwrap_or(0.0))),
+            "speed_below" => Ok(RuleFilter::SpeedBelow(f.value.unwrap_or(0.0))),
+            "heading_between" => Ok(RuleFilter::HeadingBetween {
+                from: f.from.unwrap_or(0.0),
+                to: f.to.unwrap_or(360.0),
+            }),
+            other => Err(napi::Error::from_reason(format!(
+                "unknown filter_type: {other}"
+            ))),
+        })
+        .collect::<napi::Result<Vec<_>>>()?;
+
+    Ok(ConfigurableRule {
+        name: js.name,
+        triggers,
+        filters,
+        emit: js.emit,
+        data: js.data.unwrap_or(serde_json::Value::Null),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -84,16 +297,21 @@ pub struct GeoEngineNode {
 
 impl Default for GeoEngineNode {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 #[napi]
 impl GeoEngineNode {
     #[napi(constructor)]
-    pub fn new() -> Self {
+    pub fn new(options: Option<EngineOptionsJs>) -> Self {
+        let opts = options
+            .map(|o| EngineOptions {
+                history_size: o.history_size.unwrap_or(10) as usize,
+            })
+            .unwrap_or_default();
         Self {
-            inner: Engine::new(),
+            inner: Engine::with_options(opts),
         }
     }
 
@@ -142,6 +360,63 @@ impl GeoEngineNode {
     pub fn register_circle(&mut self, id: String, cx: f64, cy: f64, r: f64) -> napi::Result<()> {
         let circle = Circle { id, cx, cy, r };
         self.inner.register_circle(circle).map_err(engine_err)
+    }
+
+    /// Define a configurable rule. Fires a `rule` event when triggers and filters match.
+    #[napi]
+    pub fn define_rule(&mut self, config: RuleConfigJs) -> napi::Result<()> {
+        let rule = parse_rule_config(config)?;
+        self.inner.add_rule(rule);
+        Ok(())
+    }
+
+    /// Define a sequence rule. Fires `sequence_complete` when all steps match in order.
+    #[napi]
+    pub fn define_sequence(&mut self, config: SequenceConfigJs) -> napi::Result<()> {
+        let rule = SequenceRule::new(
+            config.name,
+            config.steps,
+            config.within_ms.map(|v| v as u64),
+        );
+        self.inner.add_sequence(rule);
+        Ok(())
+    }
+
+    /// Return the current state snapshot for an entity, or undefined if not yet seen.
+    #[napi]
+    pub fn get_entity_state(&self, id: String) -> Option<EntityStateJs> {
+        self.inner.get_entity_state(&id).and_then(|st| {
+            let (x, y) = st.position?;
+            let t_ms = st.last_t_ms? as i64;
+            Some(EntityStateJs {
+                id,
+                x,
+                y,
+                t_ms,
+                speed: st.speed,
+                heading: st.heading,
+            })
+        })
+    }
+
+    /// Return state snapshots for all known entities.
+    #[napi]
+    pub fn get_entities(&self) -> Vec<EntityStateJs> {
+        self.inner
+            .get_entities()
+            .filter_map(|(id, st)| {
+                let (x, y) = st.position?;
+                let t_ms = st.last_t_ms? as i64;
+                Some(EntityStateJs {
+                    id: id.to_string(),
+                    x,
+                    y,
+                    t_ms,
+                    speed: st.speed,
+                    heading: st.heading,
+                })
+            })
+            .collect()
     }
 
     /// Process a batch of point updates and return the resulting events.

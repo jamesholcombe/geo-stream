@@ -36,42 +36,42 @@
  *   Output — JSON-encoded `GeoEvent`:    `{ "kind": "enter", "id": "...", ... }`
  */
 
-import { GeoEngine } from './types.js'
-import type { PointUpdate, GeoEvent } from './types.js'
+import { GeoEngine } from "./types.js";
+import type { PointUpdate, GeoEvent } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Minimal structural interfaces — no kafkajs import required
 // ---------------------------------------------------------------------------
 
 export interface KafkaProducer {
-  connect(): Promise<void>
-  disconnect(): Promise<void>
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
   send(record: {
-    topic: string
-    messages: Array<{ value: string }>
-  }): Promise<void>
+    topic: string;
+    messages: Array<{ value: string }>;
+  }): Promise<void>;
 }
 
 export interface KafkaMessage {
-  value: Buffer | null
+  value: Buffer | null;
 }
 
 export interface KafkaConsumer {
-  connect(): Promise<void>
-  disconnect(): Promise<void>
-  subscribe(opts: { topic: string; fromBeginning?: boolean }): Promise<void>
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  subscribe(opts: { topic: string; fromBeginning?: boolean }): Promise<void>;
   run(opts: {
-    eachMessage: (payload: { message: KafkaMessage }) => Promise<void>
-  }): Promise<void>
+    eachMessage: (payload: { message: KafkaMessage }) => Promise<void>;
+  }): Promise<void>;
 }
 
 export interface GeoStreamKafkaOptions {
-  consumer: KafkaConsumer
-  producer: KafkaProducer
-  inputTopic: string
-  outputTopic: string
+  consumer: KafkaConsumer;
+  producer: KafkaProducer;
+  inputTopic: string;
+  outputTopic: string;
   /** Called when a message cannot be parsed as a PointUpdate. Defaults to a no-op. */
-  onParseError?: (raw: string, err: unknown) => void
+  onParseError?: (raw: string, err: unknown) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,18 +79,18 @@ export interface GeoStreamKafkaOptions {
 // ---------------------------------------------------------------------------
 
 export class GeoStreamKafka {
-  private engine: GeoEngine
-  private opts: GeoStreamKafkaOptions
+  private engine: GeoEngine;
+  private opts: GeoStreamKafkaOptions;
 
   constructor(engine: GeoEngine, opts: GeoStreamKafkaOptions) {
-    this.engine = engine
-    this.opts = opts
+    this.engine = engine;
+    this.opts = opts;
   }
 
   /** Connect the underlying consumer and producer. Call before `start()`. */
   async connect(): Promise<void> {
-    await this.opts.consumer.connect()
-    await this.opts.producer.connect()
+    await this.opts.consumer.connect();
+    await this.opts.producer.connect();
   }
 
   /**
@@ -98,37 +98,40 @@ export class GeoStreamKafka {
    * This method delegates to `consumer.run()` which runs until `stop()` is called.
    */
   async start(): Promise<void> {
-    const { consumer, producer, inputTopic, outputTopic, onParseError } = this.opts
+    const { consumer, producer, inputTopic, outputTopic, onParseError } =
+      this.opts;
 
-    await consumer.subscribe({ topic: inputTopic, fromBeginning: false })
+    await consumer.subscribe({ topic: inputTopic, fromBeginning: false });
 
     await consumer.run({
       eachMessage: async ({ message }) => {
-        if (!message.value) return
+        if (!message.value) return;
 
-        const raw = message.value.toString()
-        let update: PointUpdate
+        const raw = message.value.toString();
+        let update: PointUpdate;
         try {
-          update = JSON.parse(raw) as PointUpdate
+          update = JSON.parse(raw) as PointUpdate;
         } catch (err) {
-          onParseError?.(raw, err)
-          return
+          onParseError?.(raw, err);
+          return;
         }
 
-        const events = this.engine.ingest([update])
-        if (events.length === 0) return
+        const events = this.engine.ingest([update]);
+        if (events.length === 0) return;
 
         await producer.send({
           topic: outputTopic,
-          messages: events.map((ev: GeoEvent) => ({ value: JSON.stringify(ev) })),
-        })
+          messages: events.map((ev: GeoEvent) => ({
+            value: JSON.stringify(ev),
+          })),
+        });
       },
-    })
+    });
   }
 
   /** Disconnect the consumer and producer. */
   async stop(): Promise<void> {
-    await this.opts.consumer.disconnect()
-    await this.opts.producer.disconnect()
+    await this.opts.consumer.disconnect();
+    await this.opts.producer.disconnect();
   }
 }

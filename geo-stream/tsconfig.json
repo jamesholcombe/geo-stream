@@ -5,8 +5,11 @@
     "strict": true,
     "declaration": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "dist"
   },
-  "include": ["types.ts", "emitter.ts", "kafka.ts", "redis.ts", "tests/**/*.test.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }

@@ -357,6 +357,8 @@ version = "0.1.11"
 dependencies = [
  "criterion",
  "geo",
+ "serde",
+ "serde_json",
  "spatial",
  "state",
  "thiserror",

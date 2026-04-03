@@ -84,18 +84,6 @@ CI runs: `fmt`, `clippy -D warnings`, `cargo test`, JSON Schema validation of ex
 
 ---
 
-## Current v1 work (ROADMAP.md)
-
-Done: SpatialRule decoupled from NaiveSpatialIndex, R-tree for circles, polygon holes, timestamp monotonicity enforcement.
-
-Remaining:
-- [ ] Zone ID scoping (global vs per-type)
-- [ ] Merge `polygon-json` into `crates/spatial`
-- [ ] Tests: cross-type duplicate IDs, timestamp edge cases
-- [ ] Stabilise NDJSON wire protocol to v1
-
----
-
 ## Anti-patterns
 
 - Mixing engine logic with adapter code
@@ -104,8 +92,4 @@ Remaining:
 - Implicit or shared mutable state
 - Leaking protocol types into the engine
 
----
 
-## Guiding principle
-
-> Build the engine abstraction first, not the ecosystem. Simplicity + extensibility over completeness.

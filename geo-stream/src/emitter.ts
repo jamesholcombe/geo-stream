@@ -13,8 +13,8 @@
  *
  * engine.registerZone('warehouse', { type: 'Polygon', coordinates: [...] })
  *
- * engine.on('enter', (ev) => console.log(ev.id, 'entered', ev.zone))
- * engine.on('exit',  (ev) => console.log(ev.id, 'left',    ev.zone))
+ * engine.on('enter', (ev) => console.log(ev.id, 'entered', ev.zone, 'at', ev.speed, 'm/s'))
+ * engine.on('rule',  (ev) => console.log('rule fired:', ev.name))
  *
  * engine.ingest([{ id: 'truck-1', x: 1, y: 1, tMs: Date.now() }])
  * ```
@@ -26,15 +26,20 @@ import type {
   GeoEvent,
   GeoJsonPolygonInput,
   PointUpdate,
-  DwellOptions,
+  ZoneOptions,
+  EngineOptions,
+  SequenceOptions,
+  RuleBuilder,
+  RuleConfig,
 } from "./types.js";
 
-// Extract each event variant as a named type for listener signatures.
 type EnterEvent = Extract<GeoEvent, { kind: "enter" }>;
 type ExitEvent = Extract<GeoEvent, { kind: "exit" }>;
 type ApproachEvent = Extract<GeoEvent, { kind: "approach" }>;
 type RecedeEvent = Extract<GeoEvent, { kind: "recede" }>;
 type AssignmentChangedEvent = Extract<GeoEvent, { kind: "assignment_changed" }>;
+type RuleEvent = Extract<GeoEvent, { kind: "rule" }>;
+type SequenceCompleteEvent = Extract<GeoEvent, { kind: "sequence_complete" }>;
 
 export class GeoEventEmitter extends EventEmitter {
   private _engine: GeoEngine;
@@ -42,15 +47,23 @@ export class GeoEventEmitter extends EventEmitter {
   constructor(engine?: GeoEngine) {
     super();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    this._engine = engine ?? new (require("./types.js") as { GeoEngine: new () => GeoEngine }).GeoEngine();
+    this._engine =
+      engine ??
+      new (
+        require("./types.js") as {
+          GeoEngine: new (opts?: EngineOptions) => GeoEngine;
+        }
+      ).GeoEngine();
   }
+
+  // --- Registration (chainable, mirrors GeoEngine) ---
 
   registerZone(
     id: string,
     polygon: GeoJsonPolygonInput,
-    dwell?: DwellOptions,
+    options?: ZoneOptions,
   ): this {
-    this._engine.registerZone(id, polygon, dwell);
+    this._engine.registerZone(id, polygon, options);
     return this;
   }
 
@@ -61,6 +74,16 @@ export class GeoEventEmitter extends EventEmitter {
 
   registerCircle(id: string, cx: number, cy: number, r: number): this {
     this._engine.registerCircle(id, cx, cy, r);
+    return this;
+  }
+
+  defineRule(name: string, fn: (rule: RuleBuilder) => RuleConfig): this {
+    this._engine.defineRule(name, fn);
+    return this;
+  }
+
+  defineSequence(opts: SequenceOptions): this {
+    this._engine.defineSequence(opts);
     return this;
   }
 
@@ -84,6 +107,11 @@ export class GeoEventEmitter extends EventEmitter {
     event: "assignment_changed",
     listener: (ev: AssignmentChangedEvent) => void,
   ): this;
+  on(event: "rule", listener: (ev: RuleEvent) => void): this;
+  on(
+    event: "sequence_complete",
+    listener: (ev: SequenceCompleteEvent) => void,
+  ): this;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.on(event, listener);
@@ -97,6 +125,11 @@ export class GeoEventEmitter extends EventEmitter {
     event: "assignment_changed",
     listener: (ev: AssignmentChangedEvent) => void,
   ): this;
+  once(event: "rule", listener: (ev: RuleEvent) => void): this;
+  once(
+    event: "sequence_complete",
+    listener: (ev: SequenceCompleteEvent) => void,
+  ): this;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   once(event: string | symbol, listener: (...args: any[]) => void): this {
     return super.once(event, listener);
@@ -109,6 +142,11 @@ export class GeoEventEmitter extends EventEmitter {
   off(
     event: "assignment_changed",
     listener: (ev: AssignmentChangedEvent) => void,
+  ): this;
+  off(event: "rule", listener: (ev: RuleEvent) => void): this;
+  off(
+    event: "sequence_complete",
+    listener: (ev: SequenceCompleteEvent) => void,
   ): this;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   off(event: string | symbol, listener: (...args: any[]) => void): this {

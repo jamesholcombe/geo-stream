@@ -1,6 +1,6 @@
 //! Per-entity zone membership and deterministic spatial events.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
 /// Minimum continuous time inside / outside before emitting enter / exit for a zone.
 ///
@@ -13,12 +13,26 @@ pub struct ZoneDwell {
     pub min_outside_ms: Option<u64>,
 }
 
+/// A single historical position sample stored in the entity's ring buffer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryPoint {
+    pub x: f64,
+    pub y: f64,
+    pub t_ms: u64,
+}
+
 /// Last known position, observation time, and spatial membership used by the engine.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EntityState {
     pub position: Option<(f64, f64)>,
     /// Milliseconds since Unix epoch for the last processed update (`None` if never updated).
     pub last_t_ms: Option<u64>,
+    /// Speed in units/second computed from the last two positions. `None` until two updates exist.
+    pub speed: Option<f64>,
+    /// Heading in degrees (0–360, north-up, clockwise) computed from the last two positions.
+    pub heading: Option<f64>,
+    /// Ring buffer of recent positions (capacity controlled by the engine). Oldest first.
+    pub history: VecDeque<HistoryPoint>,
     pub inside: BTreeSet<String>,
     /// Zone id → first `at_ms` seen inside while waiting for [`ZoneDwell::min_inside_ms`].
     pub zone_enter_pending: HashMap<String, u64>,

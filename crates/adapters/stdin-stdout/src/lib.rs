@@ -72,25 +72,57 @@ enum NdjsonEvent {
         id: String,
         zone: String,
         t: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Exit {
         id: String,
         zone: String,
         t: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Approach {
         id: String,
         circle: String,
         t: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     Recede {
         id: String,
         circle: String,
         t: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
     },
     AssignmentChanged {
         id: String,
         region: Option<String>,
+        t: u64,
+    },
+    Custom {
+        id: String,
+        name: String,
+        t: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
+        #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+        data: serde_json::Value,
+    },
+    SequenceComplete {
+        id: String,
+        sequence: String,
         t: u64,
     },
 }
@@ -98,22 +130,84 @@ enum NdjsonEvent {
 impl From<engine::Event> for NdjsonEvent {
     fn from(ev: engine::Event) -> Self {
         match ev {
-            engine::Event::Enter { id, zone, t_ms } => NdjsonEvent::Enter { id, zone, t: t_ms },
-            engine::Event::Exit { id, zone, t_ms } => NdjsonEvent::Exit { id, zone, t: t_ms },
-            engine::Event::Approach { id, circle, t_ms } => NdjsonEvent::Approach {
+            engine::Event::Enter {
                 id,
-                circle,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            } => NdjsonEvent::Enter {
+                id,
+                zone,
                 t: t_ms,
+                speed,
+                heading,
             },
-            engine::Event::Recede { id, circle, t_ms } => NdjsonEvent::Recede {
+            engine::Event::Exit {
+                id,
+                zone,
+                t_ms,
+                speed,
+                heading,
+            } => NdjsonEvent::Exit {
+                id,
+                zone,
+                t: t_ms,
+                speed,
+                heading,
+            },
+            engine::Event::Approach {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            } => NdjsonEvent::Approach {
                 id,
                 circle,
                 t: t_ms,
+                speed,
+                heading,
+            },
+            engine::Event::Recede {
+                id,
+                circle,
+                t_ms,
+                speed,
+                heading,
+            } => NdjsonEvent::Recede {
+                id,
+                circle,
+                t: t_ms,
+                speed,
+                heading,
             },
             engine::Event::AssignmentChanged { id, region, t_ms } => {
                 NdjsonEvent::AssignmentChanged {
                     id,
                     region,
+                    t: t_ms,
+                }
+            }
+            engine::Event::Custom {
+                id,
+                name,
+                t_ms,
+                speed,
+                heading,
+                data,
+            } => NdjsonEvent::Custom {
+                id,
+                name,
+                t: t_ms,
+                speed,
+                heading,
+                data,
+            },
+            engine::Event::SequenceComplete { id, sequence, t_ms } => {
+                NdjsonEvent::SequenceComplete {
+                    id,
+                    sequence,
                     t: t_ms,
                 }
             }

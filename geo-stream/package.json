@@ -3,36 +3,29 @@
   "version": "0.1.11",
   "description": "Native Node.js bindings for the geo-stream geospatial stream processor",
   "main": "index.js",
-  "types": "types.d.ts",
+  "types": "dist/types.d.ts",
   "exports": {
     ".": {
-      "types": "./types.d.ts",
+      "types": "./dist/types.d.ts",
       "default": "./index.js"
     },
     "./emitter": {
-      "types": "./emitter.d.ts",
-      "default": "./emitter.js"
+      "types": "./dist/emitter.d.ts",
+      "default": "./dist/emitter.js"
     },
     "./kafka": {
-      "types": "./kafka.d.ts",
-      "default": "./kafka.js"
+      "types": "./dist/kafka.d.ts",
+      "default": "./dist/kafka.js"
     },
     "./redis": {
-      "types": "./redis.d.ts",
-      "default": "./redis.js"
+      "types": "./dist/redis.d.ts",
+      "default": "./dist/redis.js"
     }
   },
   "files": [
     "index.js",
     "index.d.ts",
-    "types.js",
-    "types.d.ts",
-    "emitter.js",
-    "emitter.d.ts",
-    "kafka.js",
-    "kafka.d.ts",
-    "redis.js",
-    "redis.d.ts",
+    "dist/",
     "README.md"
   ],
   "scripts": {
@@ -49,6 +42,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^3",
     "@types/node": "^25.5.0",
+    "prettier": "^3.8.1",
     "tsx": "^4",
     "typescript": "^5"
   },
