@@ -7,7 +7,7 @@ import type {
   GeoJsonPolygonInput,
   PointUpdate,
   DwellOptions,
-} from "../dist/types.js";
+} from "../dist/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock GeoEngine — returns a preset event list, records calls

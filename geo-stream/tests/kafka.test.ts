@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { GeoStreamKafka } from "../dist/kafka.js";
 import type { KafkaConsumer, KafkaProducer } from "../dist/kafka.js";
-import type { GeoEngine, GeoEvent, PointUpdate } from "../dist/types.js";
+import type { GeoEngine, GeoEvent, PointUpdate } from "../dist/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock helpers

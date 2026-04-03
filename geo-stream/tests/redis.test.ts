@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { GeoStreamRedis } from "../dist/redis.js";
 import type { RedisStreamClient } from "../dist/redis.js";
-import type { GeoEngine, GeoEvent, PointUpdate } from "../dist/types.js";
+import type { GeoEngine, GeoEvent, PointUpdate } from "../dist/index.js";
 
 // ---------------------------------------------------------------------------
 // Mock helpers

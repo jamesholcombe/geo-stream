@@ -2,12 +2,12 @@
   "name": "@jamesholcombe/geo-stream",
   "version": "0.1.12",
   "description": "Native Node.js bindings for the geo-stream geospatial stream processor",
-  "main": "src/index.js",
-  "types": "dist/types.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types.d.ts",
-      "default": "./src/index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./emitter": {
       "types": "./dist/emitter.d.ts",
@@ -23,13 +23,15 @@
     }
   },
   "files": [
-    "src/",
+    "index.js",
+    "index.d.ts",
+    "*.node",
     "dist/",
     "README.md"
   ],
   "scripts": {
-    "build": "napi build --platform --release --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src",
-    "build:debug": "napi build --platform --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src",
+    "build": "napi build --platform --release --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir .",
+    "build:debug": "napi build --platform --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir .",
     "compile": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test 'tests/**/*.test.ts'",
