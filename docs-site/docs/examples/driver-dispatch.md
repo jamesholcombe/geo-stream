@@ -1,8 +1,8 @@
 ---
 id: driver-dispatch
-title: Driver Dispatch
+title: Driver dispatch
 sidebar_position: 4
-description: Detect when a driver is available for pickup using proximity rules and zone sequences.
+description: Combine rules, sequences, and zone events for a realistic pickup and route scenario.
 ---
 
 This walkthrough builds a realistic dispatch scenario: a driver becomes available when they slow down near a pickup zone, and a `sequence_complete` fires when they complete the full pickup route.

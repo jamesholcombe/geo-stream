@@ -1,8 +1,9 @@
 ---
+id: dwell-debounce
+title: Dwell debounce
 sidebar_position: 3
+description: Use dwell thresholds to reduce spurious enter, exit, approach, and recede events.
 ---
-
-# Dwell Debounce
 
 This walkthrough shows how dwell thresholds suppress spurious events from boundary oscillation — for both polygon zones and circles.
 

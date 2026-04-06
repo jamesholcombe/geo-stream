@@ -79,15 +79,13 @@ import { GeoEngine } from '@jamesholcombe/geo-stream'
 const engine = new GeoEngine()
 
 engine
-  .registerCircle('pickup-zone', 37.7749, -122.4194, 0.001) // ~100m radius in degrees
+  .registerCircle('pickup-zone', -122.4194, 37.7749, 0.001) // ~100 m radius in degrees; cx = lon, cy = lat
   .defineRule('ready-for-dispatch', rule =>
     rule
       .whenApproaches('pickup-zone')
       .speedBelow(2)
       .emit('driver-available')
   )
-
-engine.on // use GeoEventEmitter for event-based handling, or switch on ingest() results
 
 const events = engine.ingest([
   { id: 'driver-12', x: -122.4194, y: 37.7749, tMs: Date.now() },

@@ -9,11 +9,13 @@
  *
  * A single entity ("truck-1") moves through each zone in sequence.
  *
+ * Prerequisites: same as 01-basic-zone.ts (napi-build, geo-stream compile, npm install here).
+ *
  * Run:
  *   npx ts-node 02-multi-zone.ts
  */
 
-import { GeoEngine, GeoEvent } from '../../geo-stream/types'
+import { GeoEngine, type GeoEvent } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 

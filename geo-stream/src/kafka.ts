@@ -11,7 +11,7 @@
  * @example
  * ```ts
  * import { Kafka } from 'kafkajs'
- * import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+ * import { GeoEngine } from '@jamesholcombe/geo-stream'
  * import { GeoStreamKafka } from '@jamesholcombe/geo-stream/kafka'
  *
  * const kafka = new Kafka({ brokers: ['localhost:9092'] })

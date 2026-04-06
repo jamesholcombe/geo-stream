@@ -1,15 +1,16 @@
 ---
+id: basic-zone
+title: Basic zone
 sidebar_position: 1
+description: One polygon zone, one entity, and a full enter or exit lifecycle.
 ---
-
-# Basic Zone
 
 This walkthrough covers `01-basic-zone.ts` — the simplest possible use of geo-stream: one polygon zone, one entity, enter/exit lifecycle.
 
 ## 1. Register a polygon zone
 
 ```typescript
-import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
@@ -88,4 +89,4 @@ Each entity has completely independent membership state. `vehicle-2` has never b
 
 ---
 
-Next: [All Zone Types](./multi-zone)
+Next: [All zone types](./multi-zone)

@@ -5,14 +5,15 @@
  * Demonstrates the core enter / exit lifecycle.
  *
  * Prerequisites:
- *   make napi-build          # build the native .node module
- *   npm install              # install ts-node (from this directory)
+ *   make napi-build                    # native .node via NAPI
+ *   (cd ../../geo-stream && npm run compile)   # emit dist/*.js and .d.ts
+ *   npm install                        # links @jamesholcombe/geo-stream (file:../../geo-stream)
  *
  * Run:
  *   npx ts-node 01-basic-zone.ts
  */
 
-import { GeoEngine } from '../../geo-stream/types'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 

@@ -1,8 +1,9 @@
 ---
+id: installation
+title: Installation
 sidebar_position: 2
+description: Install the npm package, supported platforms, and TypeScript import paths.
 ---
-
-# Installation
 
 ```bash
 npm install @jamesholcombe/geo-stream
@@ -27,10 +28,14 @@ Node.js **18 or later** is required.
 ## Importing
 
 ```typescript
-import { GeoEngine, GeoEvent, GeoJsonPolygonInput } from '@jamesholcombe/geo-stream/types'
+import {
+  GeoEngine,
+  type GeoEvent,
+  type GeoJsonPolygonInput,
+} from '@jamesholcombe/geo-stream'
 ```
 
-The `/types` entry point provides typed wrappers with a discriminated union for `GeoEvent`. Importing from the root index (`@jamesholcombe/geo-stream`) gives the raw NAPI bindings where `ingest()` returns `unknown[]`.
+The root package exports the typed `GeoEngine` wrapper: `ingest()` returns `GeoEvent[]`, and event kinds form a discriminated union for narrowing. Subpath imports such as `@jamesholcombe/geo-stream/emitter` are available for adapters.
 
 ## TypeScript configuration
 

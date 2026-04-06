@@ -85,3 +85,7 @@ Rules and sequences let you compose these primitives further — emit a custom e
 geo-stream is a Rust library compiled to a native Node.js module. There is no server to run, no schema to migrate, no network calls. Drop it into any Node.js process and it works immediately, with state held in memory alongside your application.
 
 For workloads that already use a message broker, ready-made adapters connect the engine to [Kafka and Redis Streams](./adapters).
+
+## Rust, CLI, and NDJSON
+
+This documentation focuses on the Node.js npm package. The same engine also ships as Rust crates (`crates/engine`, `crates/state`, and others), an NDJSON CLI binary, and a wire format under `protocol/`. For repository layout, building from source, and piping sample NDJSON through the CLI, see the [geo-events README on GitHub](https://github.com/jamesholcombe/geo-events).

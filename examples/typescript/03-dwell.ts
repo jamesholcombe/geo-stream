@@ -13,11 +13,13 @@
  *   van-1  makes a brief incursion (< minInsideMs)  → no events
  *   van-2  stays inside long enough                  → enter + exit events
  *
+ * Prerequisites: same as 01-basic-zone.ts (napi-build, geo-stream compile, npm install here).
+ *
  * Run:
  *   npx ts-node 03-dwell.ts
  */
 
-import { GeoEngine } from '../../geo-stream/types'
+import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 

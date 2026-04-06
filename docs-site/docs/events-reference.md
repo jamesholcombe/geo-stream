@@ -45,8 +45,14 @@ type EventMeta = {
 
 Both fields are `undefined` on the first event for a given entity, since computing them requires at least two positions.
 
+With [`GeoEventEmitter`](./adapters#geoeventemitter), you can subscribe per event kind — raw `GeoEngine` has no `on()`; use the array from `ingest()` or an adapter.
+
 ```typescript
-engine.on('enter', (ev) => {
+import { GeoEventEmitter } from '@jamesholcombe/geo-stream/emitter'
+
+const emitter = new GeoEventEmitter()
+// ... registerZone / registerCircle, then:
+emitter.on('enter', (ev) => {
   if (ev.speed !== undefined) {
     console.log(`${ev.id} entered ${ev.zone} at ${ev.speed.toFixed(1)} units/s`)
   }

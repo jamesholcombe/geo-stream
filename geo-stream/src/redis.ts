@@ -12,7 +12,7 @@
  * @example
  * ```ts
  * import Redis from 'ioredis'
- * import { GeoEngine } from '@jamesholcombe/geo-stream/types'
+ * import { GeoEngine } from '@jamesholcombe/geo-stream'
  * import { GeoStreamRedis } from '@jamesholcombe/geo-stream/redis'
  *
  * const redis = new Redis()

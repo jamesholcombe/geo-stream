@@ -1,15 +1,16 @@
 ---
+id: multi-zone
+title: All zone types
 sidebar_position: 2
+description: Polygon zones, catalog regions, and circles registered on a single engine.
 ---
-
-# All Zone Types
 
 This walkthrough covers `02-multi-zone.ts` — all three zone types registered on a single engine, with one entity moving through each.
 
 ## 1. Register all three zone types
 
 ```typescript
-import { GeoEngine, GeoEvent } from '@jamesholcombe/geo-stream/types'
+import { GeoEngine, type GeoEvent } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
 
@@ -95,4 +96,4 @@ This `switch` is exhaustive: TypeScript will produce a compile error if a new `k
 
 ---
 
-Next: [Dwell Debounce](./dwell-debounce)
+Next: [Dwell debounce](./dwell-debounce)

@@ -8,13 +8,14 @@ const CODE_SNIPPET = `import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
   .registerZone('warehouse', warehousePolygon)
-  .registerCircle('depot', 51.5, -0.12, 0.5)
+  // cx = longitude, cy = latitude (same as PointUpdate x / y)
+  .registerCircle('depot', -0.12, 51.5, 0.5)
   .defineRule('fast-entry', rule =>
     rule.whenEnters('warehouse').speedAbove(15).emit('alert')
   )
 
 const events = engine.ingest([
-  { id: 'driver-1', x: 51.5, y: -0.12, tMs: Date.now() },
+  { id: 'driver-1', x: -0.12, y: 51.5, tMs: Date.now() },
 ])
 // [{ kind: 'approach', id: 'driver-1', circle: 'depot', t_ms: ... }]`;
 

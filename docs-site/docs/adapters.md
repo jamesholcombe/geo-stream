@@ -13,10 +13,6 @@ All adapters use structural typing: they define their own minimal interfaces and
 
 `GeoEventEmitter` wraps a `GeoEngine` as a Node.js `EventEmitter`. Instead of collecting the array returned by `ingest()`, you subscribe to event kinds with `on()`.
 
-```bash
-import { GeoEventEmitter } from '@jamesholcombe/geo-stream/emitter'
-```
-
 ```typescript
 import { GeoEventEmitter } from '@jamesholcombe/geo-stream/emitter'
 
@@ -69,10 +65,6 @@ engine.on('assignment_changed', (ev) => {
 
 `GeoStreamKafka` consumes `PointUpdate` JSON messages from a Kafka topic, processes them through a `GeoEngine`, and publishes `GeoEvent` JSON to an output topic.
 
-```bash
-import { GeoStreamKafka } from '@jamesholcombe/geo-stream/kafka'
-```
-
 ```typescript
 import { Kafka } from 'kafkajs'
 import { GeoEngine } from '@jamesholcombe/geo-stream'
@@ -110,10 +102,6 @@ One output message is produced per event. If an update produces no events, nothi
 ## GeoStreamRedis
 
 `GeoStreamRedis` reads location updates from a Redis Stream (`XREAD BLOCK`) and writes events to an output stream (`XADD`).
-
-```bash
-import { GeoStreamRedis } from '@jamesholcombe/geo-stream/redis'
-```
 
 ```typescript
 import { createClient } from 'redis'
