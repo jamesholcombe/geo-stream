@@ -9,19 +9,19 @@ These define what a stable, reliable v1 looks like.
 ### Correctness and abstraction cleanup
 
 - [x] Dwell / debounce support for circles
-- [ ] Refactor: extract `process_event()` into focused subfunctions (e.g. speed/heading, history, spatial rules, configurable rules, sequence rules) for isolated tests
-- [ ] Tests: ConfigurableRule (`trigger_matches` / `fire`, each filter type, heading wrap, multiple triggers on one event)
-- [ ] Tests: SequenceRule timeouts (`within_ms` reset, parallel entities, reset after completion)
-- [ ] Refactor: `DwellContext` (or equivalent) to trim `membership_with_dwell_impl` parameter surface
-- [ ] Docs: heading/`enrich` convention and `EventTier` ordering rationale (`process_event` monotonicity, `process_batch` errors, `RuleContext` as needed)
-- [ ] `process_batch`: optional error logging or callback so skipped errors are not silent
-- [ ] Integration test: malformed NDJSON input (and CLI edge cases: partial geometry, `batch_size=0` if applicable)
-- [ ] Criterion benchmark: configurable / sequence rule firing hot path
+- [x] `process_batch`: errors logged to stderr as NDJSON (stdin-stdout adapter)
+- [ ] Refactor: extract speed/heading and history-buffer logic from `process_event()` into focused helpers for isolated unit tests
+- [ ] Tests: ConfigurableRule — missing coverage: `SpeedBelow` filter, `HeadingBetween` with wrap-around (e.g. 350°→10°), multiple triggers matching a single event
+- [ ] Tests: SequenceRule — missing coverage: parallel entities maintaining independent progress, sequence reset after completion
+- [ ] Refactor: `DwellContext` (or equivalent) to trim `membership_with_dwell_impl` 10-parameter surface (`#[allow(clippy::too_many_arguments)]`)
+- [ ] Docs: heading/`enrich` convention and `EventTier` ordering rationale (`process_event` monotonicity, `process_batch` error handling, `RuleContext` as needed)
+- [ ] Integration test: malformed NDJSON input (CLI edge cases: partial geometry, `batch_size=0`)
+- [ ] Criterion benchmark: configurable / sequence rule firing hot path (current bench only covers zone/catalog/circle)
 
 ### v1.1 — Operability
 
-- [x] Engine state snapshot + restore (serialize `EntityState` map to JSON/msgpack for process restart)
-- [ ] Tests: snapshot round-trips for all rule types (dwell, configurable, sequence), multi-entity state, corrupted/truncated restore paths
+- [x] Engine state snapshot + restore (serialize `EntityState` map to JSON for process restart)
+- [ ] Tests: snapshot round-trips — missing coverage: dwell state, configurable rule config, sequence rule config, multi-entity state, corrupted/truncated restore
 - [ ] Structured tracing in the engine (enter, exit, dwell pending state changes)
 - [ ] Runtime zone deregistration (remove a zone by ID without restarting)
 - [ ] Zone update (replace a polygon for an existing ID without losing entity state)
@@ -35,8 +35,8 @@ These define what a stable, reliable v1 looks like.
 - [x] **EventEmitter** (`/emitter`): wraps `GeoEngine` as a Node.js `EventEmitter`; typed `on`/`once`/`off` overloads per event kind; no extra deps
 - [x] **Kafka** (`/kafka`): `PointUpdate` JSON in, `GeoEvent` JSON out via Kafka topics; structural typing — works with any kafkajs-compatible client
 - [x] **Redis Streams** (`/redis`): `XREAD BLOCK` input, `XADD` output; structural typing — works with ioredis and node-redis v4+
-- [ ] TypeScript: tighten `RuleEvent` typing (replace loose index signature with specific fields)
-- [ ] TypeScript (`rules.ts`): pass rule `name` into `emit()` instead of overwriting after emit
+- [ ] TypeScript: tighten `RuleEvent` typing (replace `[key: string]: unknown` index signature with specific fields)
+- [ ] TypeScript (`rules.ts`): thread rule `name` through `RuleBuilder.emit()` instead of setting `name: ""` and overwriting it in `GeoEngine.defineRule`
 - [ ] **WebSockets**: bidirectional adapter — devices push GPS fixes over WS, events pushed back on the same connection; natural fit for live dashboards and mobile clients
 - [ ] **MQTT**: subscribe to `devices/{id}/location`, publish to `events/{id}`; `mqtt.js` compatible; low overhead, good for IoT/embedded device fleets
 - [ ] **HTTP SSE**: long-lived HTTP response streaming `GeoEvent` as `data: {...}\n\n`; browser-native, no WS upgrade needed; good for read-only dashboards
@@ -68,4 +68,3 @@ These define what a stable, reliable v1 looks like.
 
 - [ ] Smoothing / dead-reckoning to reduce noise before rule evaluation
 - [ ] Path interpolation between sparse GPS samples for more accurate enter/exit timestamps
-
