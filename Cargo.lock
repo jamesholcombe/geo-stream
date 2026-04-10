@@ -512,6 +512,7 @@ dependencies = [
  "num-traits",
  "robust",
  "rstar 0.12.2",
+ "serde",
  "spade",
 ]
 
@@ -1139,6 +1140,7 @@ dependencies = [
  "geo",
  "geojson",
  "rstar 0.12.2",
+ "serde",
  "serde_json",
  "thiserror",
 ]
@@ -1161,6 +1163,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "state"
 version = "0.2.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "stdin-stdout"

@@ -5,6 +5,7 @@ use geo::algorithm::contains::Contains;
 use geo::{LineString, Point, Polygon};
 use geojson::Geometry;
 use rstar::{RTree, RTreeObject, AABB};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fmt;
@@ -58,14 +59,14 @@ fn radius_aabb(cx: f64, cy: f64, r: f64) -> AABB<[f64; 2]> {
 }
 
 /// A named zone as a polygon (exterior ring plus optional interior holes).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Zone {
     pub id: String,
     pub polygon: Polygon<f64>,
 }
 
 /// Fixed center + radius disk in the same planar CRS as polygons (Euclidean distance).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Circle {
     pub id: String,
     pub cx: f64,
@@ -216,6 +217,41 @@ fn primary_catalog_at_indexed(
 impl NaiveSpatialIndex {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Reconstruct an index from raw zone/circle vecs (e.g. after deserializing a snapshot).
+    /// Re-registers every item, rebuilding the R-trees from scratch.
+    pub fn from_vecs(
+        fences: Vec<Zone>,
+        catalog: Vec<Zone>,
+        circles: Vec<Circle>,
+    ) -> Result<Self, SpatialError> {
+        let mut idx = Self::new();
+        for zone in fences {
+            idx.try_push_zone(zone)?;
+        }
+        for region in catalog {
+            idx.try_push_catalog_region(region)?;
+        }
+        for circle in circles {
+            idx.try_push_circle(circle)?;
+        }
+        Ok(idx)
+    }
+
+    /// All registered zones (fences).
+    pub fn zones(&self) -> &[Zone] {
+        &self.fences
+    }
+
+    /// All registered catalog regions.
+    pub fn catalog_regions(&self) -> &[Zone] {
+        &self.catalog
+    }
+
+    /// All registered circles.
+    pub fn circles(&self) -> &[Circle] {
+        &self.circles
     }
 
     /// Register a zone (enter/exit events).

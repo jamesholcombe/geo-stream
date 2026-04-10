@@ -18,25 +18,56 @@ export type EventMeta = {
   heading?: number; // degrees 0–360, north-up clockwise
 };
 
+interface BaseEvent {
+  id: string;
+  t_ms: number;
+  kind: string;
+}
+
+export type EnterEvent = BaseEvent & {
+  kind: "enter";
+  zone: string;
+} & EventMeta;
+
+export type ExitEvent = BaseEvent & {
+  kind: "exit";
+  zone: string;
+} & EventMeta;
+
+export type ApproachEvent = BaseEvent & {
+  kind: "approach";
+  circle: string;
+} & EventMeta;
+
+export type RecedeEvent = BaseEvent & {
+  kind: "recede";
+  circle: string;
+} & EventMeta;
+
+export type AssignmentChangedEvent = BaseEvent & {
+  kind: "assignment_changed";
+  region: string | null;
+};
+
+export type RuleEvent = {
+  kind: "rule";
+  name: string;
+  [key: string]: unknown;
+} & EventMeta;
+
+export type SequenceCompleteEvent = BaseEvent & {
+  kind: "sequence_complete";
+  sequence: string;
+};
+
 export type GeoEvent =
-  | ({ kind: "enter"; id: string; zone: string; t_ms: number } & EventMeta)
-  | ({ kind: "exit"; id: string; zone: string; t_ms: number } & EventMeta)
-  | ({ kind: "approach"; id: string; circle: string; t_ms: number } & EventMeta)
-  | ({ kind: "recede"; id: string; circle: string; t_ms: number } & EventMeta)
-  | {
-      kind: "assignment_changed";
-      id: string;
-      region: string | null;
-      t_ms: number;
-    }
-  | ({
-      kind: "rule";
-      id: string;
-      name: string;
-      t_ms: number;
-      [key: string]: unknown;
-    } & EventMeta)
-  | { kind: "sequence_complete"; id: string; sequence: string; t_ms: number };
+  | EnterEvent
+  | ExitEvent
+  | ApproachEvent
+  | RecedeEvent
+  | AssignmentChangedEvent
+  | RuleEvent
+  | SequenceCompleteEvent;
 
 export interface EntityState {
   id: string;

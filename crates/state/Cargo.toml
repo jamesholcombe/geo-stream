@@ -5,3 +5,4 @@ edition.workspace = true
 description = "Entity geofence membership state and enter/exit events"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }

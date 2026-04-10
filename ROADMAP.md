@@ -20,7 +20,7 @@ These define what a stable, reliable v1 looks like.
 
 ### v1.1 — Operability
 
-- [ ] Engine state snapshot + restore (serialize `EntityState` map to JSON/msgpack for process restart)
+- [x] Engine state snapshot + restore (serialize `EntityState` map to JSON/msgpack for process restart)
 - [ ] Tests: snapshot round-trips for all rule types (dwell, configurable, sequence), multi-entity state, corrupted/truncated restore paths
 - [ ] Structured tracing in the engine (enter, exit, dwell pending state changes)
 - [ ] Runtime zone deregistration (remove a zone by ID without restarting)

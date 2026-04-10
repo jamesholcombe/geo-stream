@@ -47,7 +47,7 @@ interface NativeNode extends InstanceType<typeof GeoEngineNode> {
     steps: string[];
     withinMs?: number | null;
   }): void;
-  getEntityState(id: string): EntityState | undefined;
+  getEntityState(id: string): EntityState | null;
   getEntities(): EntityState[];
 }
 
@@ -140,7 +140,8 @@ export class GeoEngine {
   // --- Entity state ---
 
   getEntityState(id: string): EntityState | undefined {
-    return this.node.getEntityState(id);
+    const state = this.node.getEntityState(id);
+    return state ?? undefined;
   }
 
   getEntities(): EntityState[] {

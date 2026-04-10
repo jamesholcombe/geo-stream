@@ -5,11 +5,12 @@ mod rules;
 use spatial::NaiveSpatialIndex;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::path::PathBuf;
 use thiserror::Error;
 
 pub use rules::{default_rules, CatalogRule, RadiusRule, RuleContext, SpatialRule, ZoneRule};
 pub use spatial::{Circle, SpatialError, SpatialIndex, Zone};
-pub use state::{CircleDwell, EntityState, HistoryPoint, ZoneDwell};
+pub use state::{CircleDwell, EntityState, HistoryPoint, MemoryStateStore, StateStore, ZoneDwell};
 
 // ---------------------------------------------------------------------------
 // Public event type
@@ -156,7 +157,7 @@ fn event_sort_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
 // Configurable rule types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EventKind {
     Enter,
     Exit,
@@ -164,13 +165,13 @@ pub enum EventKind {
     Recede,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuleTrigger {
     pub event_kind: EventKind,
     pub target_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RuleFilter {
     SpeedAbove(f64),
     SpeedBelow(f64),
@@ -182,7 +183,7 @@ pub enum RuleFilter {
 }
 
 /// A named rule that fires a `Custom` event when spatial events and entity-state filters all match.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConfigurableRule {
     pub name: String,
     pub triggers: Vec<RuleTrigger>,
@@ -329,6 +330,32 @@ impl SequenceRule {
     }
 }
 
+/// Serializable form of [`SequenceRule`] for use in engine snapshots.
+/// Per-entity progress state is intentionally excluded — in-flight sequences are abandoned
+/// on process restart (acceptable for this persistence model).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SequenceRuleSnapshot {
+    pub name: String,
+    pub steps: Vec<String>,
+    pub within_ms: Option<u64>,
+}
+
+impl From<&SequenceRule> for SequenceRuleSnapshot {
+    fn from(r: &SequenceRule) -> Self {
+        Self {
+            name: r.name.clone(),
+            steps: r.steps.clone(),
+            within_ms: r.within_ms,
+        }
+    }
+}
+
+impl From<SequenceRuleSnapshot> for SequenceRule {
+    fn from(s: SequenceRuleSnapshot) -> Self {
+        SequenceRule::new(s.name, s.steps, s.within_ms)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Engine
 // ---------------------------------------------------------------------------
@@ -374,6 +401,64 @@ pub enum EngineError {
         last_t_ms: u64,
         incoming_t_ms: u64,
     },
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot / persistence
+// ---------------------------------------------------------------------------
+
+/// A complete, serializable point-in-time capture of [`Engine`] state. Can be saved to a file
+/// or any other backing store and passed to [`Engine::restore_from_snapshot`] to resume.
+///
+/// Zone/circle registrations are included so the spatial index is fully reconstructed.
+/// The default spatial rule pipeline is deterministic and is not stored; custom rules ARE stored.
+/// In-flight sequence rule progress is not preserved (sequences restart after a restore).
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct EngineSnapshot {
+    pub entities: HashMap<String, EntityState>,
+    pub fences: Vec<Zone>,
+    pub catalog: Vec<Zone>,
+    pub circles: Vec<Circle>,
+    pub zone_dwell: HashMap<String, ZoneDwell>,
+    pub circle_dwell: HashMap<String, CircleDwell>,
+    pub configurable_rules: Vec<ConfigurableRule>,
+    pub sequence_rules: Vec<SequenceRuleSnapshot>,
+    pub history_size: usize,
+}
+
+/// Pluggable persistence backend for engine snapshots. Implement this to save/load
+/// snapshots from a file, Redis, DynamoDB, or any other store.
+pub trait SnapshotStore {
+    type Error: std::error::Error + Send + Sync + 'static;
+    /// Persist `snapshot` to the backing store.
+    fn save(&self, snapshot: &EngineSnapshot) -> Result<(), Self::Error>;
+    /// Load the most recent snapshot, or `None` if the store is empty.
+    fn load(&self) -> Result<Option<EngineSnapshot>, Self::Error>;
+}
+
+/// [`SnapshotStore`] implementation that reads and writes a single JSON file.
+pub struct FileSnapshotStore {
+    pub path: PathBuf,
+}
+
+impl SnapshotStore for FileSnapshotStore {
+    type Error = std::io::Error;
+
+    fn save(&self, snapshot: &EngineSnapshot) -> Result<(), Self::Error> {
+        let json = serde_json::to_string(snapshot)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(&self.path, json)
+    }
+
+    fn load(&self) -> Result<Option<EngineSnapshot>, Self::Error> {
+        if !self.path.exists() {
+            return Ok(None);
+        }
+        let data = std::fs::read(&self.path)?;
+        let snap = serde_json::from_slice(&data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(Some(snap))
+    }
 }
 
 /// Options for constructing an [`Engine`].
@@ -477,6 +562,62 @@ impl Engine {
     /// Return snapshots for all known entities.
     pub fn get_entities(&self) -> impl Iterator<Item = (&str, &EntityState)> {
         self.entities.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Capture a serializable snapshot of the full engine state.
+    ///
+    /// The snapshot includes entity state, all registered zones/circles/catalog regions, dwell
+    /// configs, and configurable/sequence rule definitions. Pass the result to
+    /// [`Engine::restore_from_snapshot`] (or a [`SnapshotStore`] impl) to persist it.
+    pub fn snapshot(&self) -> EngineSnapshot {
+        EngineSnapshot {
+            entities: self.entities.clone(),
+            fences: self.spatial.zones().to_vec(),
+            catalog: self.spatial.catalog_regions().to_vec(),
+            circles: self.spatial.circles().to_vec(),
+            zone_dwell: self.zone_dwell.clone(),
+            circle_dwell: self.circle_dwell.clone(),
+            configurable_rules: self.configurable_rules.clone(),
+            sequence_rules: self
+                .sequence_rules
+                .iter()
+                .map(SequenceRuleSnapshot::from)
+                .collect(),
+            history_size: self.history_size,
+        }
+    }
+
+    /// Reconstruct an engine from a previously captured [`EngineSnapshot`].
+    ///
+    /// Zone/circle registrations and all entity membership state are restored. The default
+    /// spatial rule pipeline is rebuilt deterministically. In-flight sequence progress is not
+    /// restored (sequences restart from step 0).
+    pub fn restore_from_snapshot(snap: EngineSnapshot) -> Result<Self, EngineError> {
+        let spatial = NaiveSpatialIndex::from_vecs(snap.fences, snap.catalog, snap.circles)?;
+        let mut engine = Self {
+            spatial,
+            zone_dwell: snap.zone_dwell,
+            circle_dwell: snap.circle_dwell,
+            entities: snap.entities,
+            membership_scratch: BTreeSet::new(),
+            rules: rules::default_rules(),
+            configurable_rules: snap.configurable_rules,
+            sequence_rules: snap
+                .sequence_rules
+                .into_iter()
+                .map(SequenceRule::from)
+                .collect(),
+            history_size: snap.history_size,
+        };
+        // Ensure every zone that has a registered dwell config also has a default entry.
+        // (Zones registered via register_zone always insert a default; snapshot round-trips do too.)
+        for zone in engine.spatial.zones() {
+            engine.zone_dwell.entry(zone.id.clone()).or_default();
+        }
+        for circle in engine.spatial.circles() {
+            engine.circle_dwell.entry(circle.id.clone()).or_default();
+        }
+        Ok(engine)
     }
 
     /// Sort updates by entity id, run `GeoEngine::process_event` for each, then

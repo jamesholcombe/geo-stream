@@ -1,11 +1,12 @@
 //! Per-entity zone membership and deterministic spatial events.
 
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
 /// Minimum continuous time inside / outside before emitting enter / exit for a zone.
 ///
 /// `None` for a field means **no minimum** (immediate enter or exit when geometry changes).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZoneDwell {
     /// Emit [`Event::Enter`] only after the point has been inside the polygon for this many ms.
     pub min_inside_ms: Option<u64>,
@@ -16,7 +17,7 @@ pub struct ZoneDwell {
 /// Minimum continuous time inside / outside before emitting approach / recede for a circle.
 ///
 /// `None` for a field means **no minimum** (immediate approach or recede when membership changes).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CircleDwell {
     /// Emit [`Event::Approach`] only after the point has been inside the circle for this many ms.
     pub min_inside_ms: Option<u64>,
@@ -25,7 +26,7 @@ pub struct CircleDwell {
 }
 
 /// A single historical position sample stored in the entity's ring buffer.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HistoryPoint {
     pub x: f64,
     pub y: f64,
@@ -33,7 +34,7 @@ pub struct HistoryPoint {
 }
 
 /// Last known position, observation time, and spatial membership used by the engine.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EntityState {
     pub position: Option<(f64, f64)>,
     /// Milliseconds since Unix epoch for the last processed update (`None` if never updated).
@@ -288,6 +289,48 @@ pub fn circle_membership_with_dwell(
         },
         out,
     );
+}
+
+// ---------------------------------------------------------------------------
+// Pluggable state store
+// ---------------------------------------------------------------------------
+
+/// Read/write access to per-entity state. Implement this to back the engine with an external
+/// store (Redis, DynamoDB, etc.). The default implementation is [`MemoryStateStore`].
+///
+/// Methods return and accept owned [`EntityState`] values so implementations can serialize
+/// state to/from an external system without borrow-checker friction.
+pub trait StateStore: Send {
+    /// Return a clone of the stored state for `id`, or `None` if the entity is unknown.
+    fn get(&self, id: &str) -> Option<EntityState>;
+    /// Insert or overwrite the state for `id`.
+    fn set(&mut self, id: &str, state: EntityState);
+    /// Remove the state entry for `id` if it exists.
+    fn remove(&mut self, id: &str);
+    /// Return a snapshot of all stored entities as owned pairs.
+    fn all_entities(&self) -> Vec<(String, EntityState)>;
+}
+
+/// In-memory [`StateStore`] backed by a [`HashMap`]. Zero-overhead default.
+#[derive(Debug, Default)]
+pub struct MemoryStateStore(pub HashMap<String, EntityState>);
+
+impl StateStore for MemoryStateStore {
+    fn get(&self, id: &str) -> Option<EntityState> {
+        self.0.get(id).cloned()
+    }
+
+    fn set(&mut self, id: &str, state: EntityState) {
+        self.0.insert(id.to_string(), state);
+    }
+
+    fn remove(&mut self, id: &str) {
+        self.0.remove(id);
+    }
+
+    fn all_entities(&self) -> Vec<(String, EntityState)> {
+        self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
 }
 
 /// Stable ordering: entity id, observation time, tier, zone id, enter/approach before exit/recede.

@@ -24,7 +24,13 @@ pub fn geo_stream_exe() -> PathBuf {
 }
 
 /// Run `geo-stream` with stdin bytes; capture full output.
+#[allow(dead_code)]
 pub fn run_geo_stream(stdin: &[u8]) -> Output {
+    run_geo_stream_with_args(stdin, &[])
+}
+
+/// Run `geo-stream` with stdin bytes and additional CLI args; capture full output.
+pub fn run_geo_stream_with_args(stdin: &[u8], args: &[&str]) -> Output {
     let bin = geo_stream_exe();
     assert!(
         bin.exists(),
@@ -32,6 +38,7 @@ pub fn run_geo_stream(stdin: &[u8]) -> Output {
         bin.display()
     );
     let mut child = Command::new(&bin)
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
