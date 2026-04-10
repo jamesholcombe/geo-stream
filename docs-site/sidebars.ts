@@ -13,7 +13,7 @@ const sidebars: SidebarsConfig = {
       label: 'Concepts',
       collapsible: true,
       collapsed: false,
-      items: ['zone-types', 'ingest', 'dwell', 'rules'],
+      items: ['zone-types', 'ingest', 'querying', 'dwell', 'rules'],
     },
     {
       type: 'category',

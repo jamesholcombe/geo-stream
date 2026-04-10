@@ -90,6 +90,19 @@ pub struct EntityStateJs {
     pub heading: Option<f64>,
 }
 
+/// Entity state plus Euclidean distance from a query point, returned from spatial queries.
+#[napi(object)]
+pub struct EntityWithDistanceJs {
+    pub id: String,
+    pub x: f64,
+    pub y: f64,
+    pub t_ms: i64,
+    pub speed: Option<f64>,
+    pub heading: Option<f64>,
+    /// Euclidean distance from the query point in the same units as coordinates.
+    pub distance: f64,
+}
+
 // ---------------------------------------------------------------------------
 // Event DTO
 // ---------------------------------------------------------------------------
@@ -404,18 +417,9 @@ impl GeoEngineNode {
     /// Return the current state snapshot for an entity, or undefined if not yet seen.
     #[napi]
     pub fn get_entity_state(&self, id: String) -> Option<EntityStateJs> {
-        self.inner.get_entity_state(&id).and_then(|st| {
-            let (x, y) = st.position?;
-            let t_ms = st.last_t_ms? as i64;
-            Some(EntityStateJs {
-                id,
-                x,
-                y,
-                t_ms,
-                speed: st.speed,
-                heading: st.heading,
-            })
-        })
+        self.inner
+            .get_entity_state(&id)
+            .and_then(|st| entity_to_js(&id, st))
     }
 
     /// Return state snapshots for all known entities.
@@ -423,18 +427,57 @@ impl GeoEngineNode {
     pub fn get_entities(&self) -> Vec<EntityStateJs> {
         self.inner
             .get_entities()
-            .filter_map(|(id, st)| {
-                let (x, y) = st.position?;
-                let t_ms = st.last_t_ms? as i64;
-                Some(EntityStateJs {
-                    id: id.to_string(),
-                    x,
-                    y,
-                    t_ms,
-                    speed: st.speed,
-                    heading: st.heading,
-                })
-            })
+            .filter_map(|(id, st)| entity_to_js(id, st))
+            .collect()
+    }
+
+    /// Return all entities whose logical zone membership includes `zone_id`.
+    #[napi]
+    pub fn entities_in_zone(&self, zone_id: String) -> Vec<EntityStateJs> {
+        self.inner
+            .entities_in_zone(&zone_id)
+            .into_iter()
+            .filter_map(|(id, st)| entity_to_js(id, st))
+            .collect()
+    }
+
+    /// Return all entities whose logical circle membership includes `circle_id`.
+    #[napi]
+    pub fn entities_in_circle(&self, circle_id: String) -> Vec<EntityStateJs> {
+        self.inner
+            .entities_in_circle(&circle_id)
+            .into_iter()
+            .filter_map(|(id, st)| entity_to_js(id, st))
+            .collect()
+    }
+
+    /// Return all entities whose current catalog region matches `region_id`.
+    #[napi]
+    pub fn entities_in_region(&self, region_id: String) -> Vec<EntityStateJs> {
+        self.inner
+            .entities_in_region(&region_id)
+            .into_iter()
+            .filter_map(|(id, st)| entity_to_js(id, st))
+            .collect()
+    }
+
+    /// Return all entities within `radius` of `(x, y)`, sorted by distance ascending.
+    #[napi]
+    pub fn entities_near_point(&self, x: f64, y: f64, radius: f64) -> Vec<EntityWithDistanceJs> {
+        self.inner
+            .entities_near_point(x, y, radius)
+            .into_iter()
+            .filter_map(|(id, st, dist)| entity_to_js_with_distance(id, st, dist))
+            .collect()
+    }
+
+    /// Return the `k` nearest entities to `(x, y)`, sorted by distance ascending.
+    #[napi]
+    pub fn nearest_to_point(&self, x: f64, y: f64, k: i32) -> Vec<EntityWithDistanceJs> {
+        self.inner
+            .nearest_to_point(x, y, k.max(0) as usize)
+            .into_iter()
+            .filter_map(|(id, st, dist)| entity_to_js_with_distance(id, st, dist))
             .collect()
     }
 
@@ -466,4 +509,35 @@ impl GeoEngineNode {
 
 fn engine_err(e: engine::EngineError) -> napi::Error {
     napi::Error::from_reason(e.to_string())
+}
+
+fn entity_to_js(id: &str, st: &engine::EntityState) -> Option<EntityStateJs> {
+    let (x, y) = st.position?;
+    let t_ms = st.last_t_ms? as i64;
+    Some(EntityStateJs {
+        id: id.to_string(),
+        x,
+        y,
+        t_ms,
+        speed: st.speed,
+        heading: st.heading,
+    })
+}
+
+fn entity_to_js_with_distance(
+    id: &str,
+    st: &engine::EntityState,
+    distance: f64,
+) -> Option<EntityWithDistanceJs> {
+    let (x, y) = st.position?;
+    let t_ms = st.last_t_ms? as i64;
+    Some(EntityWithDistanceJs {
+        id: id.to_string(),
+        x,
+        y,
+        t_ms,
+        speed: st.speed,
+        heading: st.heading,
+        distance,
+    })
 }

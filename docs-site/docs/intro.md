@@ -80,6 +80,8 @@ All three coexist on the same engine. A single location update is evaluated agai
 
 Rules and sequences let you compose these primitives further — emit a custom event when an entity enters a zone at speed, or detect when a driver completes a multi-stop route in order. See [Rules and Sequences](./rules).
 
+You can also query the engine's in-memory state at any time: find every entity currently inside a zone, or ask for the nearest k entities to a point. See [Querying entities](./querying).
+
 ## No infrastructure required
 
 geo-stream is a Rust library compiled to a native Node.js module. There is no server to run, no schema to migrate, no network calls. Drop it into any Node.js process and it works immediately, with state held in memory alongside your application.

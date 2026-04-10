@@ -32,6 +32,20 @@ export declare class GeoEngineNode {
   getEntityState(id: string): EntityStateJs | null;
   /** Return state snapshots for all known entities. */
   getEntities(): Array<EntityStateJs>;
+  /** Return all entities whose logical zone membership includes `zone_id`. */
+  entitiesInZone(zoneId: string): Array<EntityStateJs>;
+  /** Return all entities whose logical circle membership includes `circle_id`. */
+  entitiesInCircle(circleId: string): Array<EntityStateJs>;
+  /** Return all entities whose current catalog region matches `region_id`. */
+  entitiesInRegion(regionId: string): Array<EntityStateJs>;
+  /** Return all entities within `radius` of `(x, y)`, sorted by distance ascending. */
+  entitiesNearPoint(
+    x: number,
+    y: number,
+    radius: number,
+  ): Array<EntityWithDistanceJs>;
+  /** Return the `k` nearest entities to `(x, y)`, sorted by distance ascending. */
+  nearestToPoint(x: number, y: number, k: number): Array<EntityWithDistanceJs>;
   /**
    * Process a batch of point updates and return the resulting events.
    * Updates are sorted by entity ID then timestamp before processing.
@@ -57,6 +71,18 @@ export interface EntityStateJs {
   tMs: number;
   speed?: number;
   heading?: number;
+}
+
+/** Entity state plus Euclidean distance from a query point, returned from spatial queries. */
+export interface EntityWithDistanceJs {
+  id: string;
+  x: number;
+  y: number;
+  tMs: number;
+  speed?: number;
+  heading?: number;
+  /** Euclidean distance from the query point in the same units as coordinates. */
+  distance: number;
 }
 
 export interface PointUpdateJs {

@@ -77,3 +77,9 @@ export interface EntityState {
   speed?: number; // units/s
   heading?: number; // degrees 0–360
 }
+
+/** EntityState plus Euclidean distance from the query point, returned from spatial queries. */
+export type EntityWithDistance = EntityState & {
+  /** Euclidean distance from the query point in the same units as coordinates. */
+  distance: number;
+};

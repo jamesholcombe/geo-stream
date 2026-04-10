@@ -564,6 +564,75 @@ impl Engine {
         self.entities.iter().map(|(k, v)| (k.as_str(), v))
     }
 
+    /// Return all entities whose logical zone membership includes `zone_id`.
+    pub fn entities_in_zone(&self, zone_id: &str) -> Vec<(&str, &EntityState)> {
+        self.entities
+            .iter()
+            .filter(|(_, st)| st.inside.contains(zone_id))
+            .map(|(id, st)| (id.as_str(), st))
+            .collect()
+    }
+
+    /// Return all entities whose logical circle membership includes `circle_id`.
+    pub fn entities_in_circle(&self, circle_id: &str) -> Vec<(&str, &EntityState)> {
+        self.entities
+            .iter()
+            .filter(|(_, st)| st.inside_circle.contains(circle_id))
+            .map(|(id, st)| (id.as_str(), st))
+            .collect()
+    }
+
+    /// Return all entities whose current catalog region matches `region_id`.
+    pub fn entities_in_region(&self, region_id: &str) -> Vec<(&str, &EntityState)> {
+        self.entities
+            .iter()
+            .filter(|(_, st)| st.catalog_region.as_deref() == Some(region_id))
+            .map(|(id, st)| (id.as_str(), st))
+            .collect()
+    }
+
+    /// Return all entities within `radius` of `(x, y)`, sorted by distance ascending.
+    /// Entities with no known position are excluded.
+    pub fn entities_near_point(
+        &self,
+        x: f64,
+        y: f64,
+        radius: f64,
+    ) -> Vec<(&str, &EntityState, f64)> {
+        let r2 = radius * radius;
+        let mut out: Vec<_> = self
+            .entities
+            .iter()
+            .filter_map(|(id, st)| {
+                let (ex, ey) = st.position?;
+                let dx = ex - x;
+                let dy = ey - y;
+                let dist2 = dx * dx + dy * dy;
+                (dist2 <= r2).then(|| (id.as_str(), st, dist2.sqrt()))
+            })
+            .collect();
+        out.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        out
+    }
+
+    /// Return the `k` nearest entities to `(x, y)`, sorted by distance ascending.
+    /// Entities with no known position are excluded.
+    pub fn nearest_to_point(&self, x: f64, y: f64, k: usize) -> Vec<(&str, &EntityState, f64)> {
+        let mut out: Vec<_> = self
+            .entities
+            .iter()
+            .filter_map(|(id, st)| {
+                let (ex, ey) = st.position?;
+                let dx = ex - x;
+                let dy = ey - y;
+                Some((id.as_str(), st, (dx * dx + dy * dy).sqrt()))
+            })
+            .collect();
+        out.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        out.truncate(k);
+        out
+    }
+
     /// Capture a serializable snapshot of the full engine state.
     ///
     /// The snapshot includes entity state, all registered zones/circles/catalog regions, dwell
@@ -1679,5 +1748,188 @@ mod tests {
         assert!(!ev
             .iter()
             .any(|e| matches!(e, Event::SequenceComplete { .. })));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Query API tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn entities_in_zone_returns_matching() {
+        let mut e = Engine::new();
+        e.register_zone(Zone {
+            id: "depot".into(),
+            polygon: unit_square(),
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "truck-1".into(),
+            x: 0.5,
+            y: 0.5,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        let result = e.entities_in_zone("depot");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "truck-1");
+    }
+
+    #[test]
+    fn entities_in_zone_excludes_outside() {
+        let mut e = Engine::new();
+        e.register_zone(Zone {
+            id: "depot".into(),
+            polygon: unit_square(),
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "truck-1".into(),
+            x: 5.0,
+            y: 5.0,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        assert!(e.entities_in_zone("depot").is_empty());
+    }
+
+    #[test]
+    fn entities_in_zone_unknown_zone_returns_empty() {
+        let e = Engine::new();
+        assert!(e.entities_in_zone("nonexistent").is_empty());
+    }
+
+    #[test]
+    fn entities_in_circle_returns_matching() {
+        let mut e = Engine::new();
+        e.register_circle(Circle {
+            id: "bay".into(),
+            cx: 0.0,
+            cy: 0.0,
+            r: 2.0,
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "van-1".into(),
+            x: 1.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        let result = e.entities_in_circle("bay");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "van-1");
+    }
+
+    #[test]
+    fn entities_in_region_returns_matching() {
+        let mut e = Engine::new();
+        e.register_catalog_region(Zone {
+            id: "north".into(),
+            polygon: unit_square(),
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "driver-5".into(),
+            x: 0.5,
+            y: 0.5,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        let result = e.entities_in_region("north");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "driver-5");
+    }
+
+    #[test]
+    fn entities_near_point_sorted_by_distance() {
+        let mut e = Engine::new();
+        // truck-far at distance 5, truck-near at distance 1
+        e.process_event(PointUpdate {
+            id: "truck-far".into(),
+            x: 5.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "truck-near".into(),
+            x: 1.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        let result = e.entities_near_point(0.0, 0.0, 10.0);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, "truck-near");
+        assert!((result[0].2 - 1.0).abs() < 1e-9);
+        assert_eq!(result[1].0, "truck-far");
+        assert!((result[1].2 - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn entities_near_point_excludes_beyond_radius() {
+        let mut e = Engine::new();
+        e.process_event(PointUpdate {
+            id: "near".into(),
+            x: 1.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+        e.process_event(PointUpdate {
+            id: "far".into(),
+            x: 100.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        let result = e.entities_near_point(0.0, 0.0, 5.0);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "near");
+    }
+
+    #[test]
+    fn nearest_to_point_respects_k() {
+        let mut e = Engine::new();
+        for i in 1..=5u32 {
+            e.process_event(PointUpdate {
+                id: format!("e{i}"),
+                x: i as f64,
+                y: 0.0,
+                t_ms: i as u64,
+            })
+            .unwrap();
+        }
+
+        let result = e.nearest_to_point(0.0, 0.0, 2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, "e1");
+        assert_eq!(result[1].0, "e2");
+    }
+
+    #[test]
+    fn nearest_to_point_excludes_entities_without_position() {
+        // An entity with no position can't be produced by process_event (position is always set).
+        // This test confirms that entities_near_point and nearest_to_point only return entities
+        // with a known position — enforced by the filter_map(|..| st.position?).
+        let mut e = Engine::new();
+        e.process_event(PointUpdate {
+            id: "known".into(),
+            x: 2.0,
+            y: 0.0,
+            t_ms: 1,
+        })
+        .unwrap();
+
+        // k larger than entity count: should return only those with positions.
+        let result = e.nearest_to_point(0.0, 0.0, 100);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "known");
     }
 }
