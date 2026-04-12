@@ -11,13 +11,12 @@ All output from `ingest()` is a `GeoEvent[]`. The `kind` field is a discriminant
 
 ```typescript
 type GeoEvent =
-  | ({ kind: 'enter';              id: string; zone: string;           t_ms: number } & EventMeta)
-  | ({ kind: 'exit';               id: string; zone: string;           t_ms: number } & EventMeta)
-  | ({ kind: 'approach';           id: string; circle: string;         t_ms: number } & EventMeta)
-  | ({ kind: 'recede';             id: string; circle: string;         t_ms: number } & EventMeta)
-  | {  kind: 'assignment_changed'; id: string; region: string | null;  t_ms: number }
-  | ({ kind: 'rule';               id: string; name: string;           t_ms: number; [key: string]: unknown } & EventMeta)
-  | {  kind: 'sequence_complete';  id: string; sequence: string;       t_ms: number }
+  | ({ kind: 'enter';             id: string; zone: string;   t_ms: number } & EventMeta)
+  | ({ kind: 'exit';              id: string; zone: string;   t_ms: number } & EventMeta)
+  | ({ kind: 'approach';          id: string; circle: string; t_ms: number } & EventMeta)
+  | ({ kind: 'recede';            id: string; circle: string; t_ms: number } & EventMeta)
+  | ({ kind: 'rule';              id: string; name: string;   t_ms: number; [key: string]: unknown } & EventMeta)
+  | {  kind: 'sequence_complete'; id: string; sequence: string; t_ms: number }
 ```
 
 ## Event table
@@ -28,7 +27,6 @@ type GeoEvent =
 | `exit` | `id`, `zone`, `t_ms` | Entity exits a polygon zone |
 | `approach` | `id`, `circle`, `t_ms` | Entity enters a circle |
 | `recede` | `id`, `circle`, `t_ms` | Entity exits a circle |
-| `assignment_changed` | `id`, `region \| null`, `t_ms` | Entity's catalog region changes |
 | `rule` | `id`, `name`, `t_ms` | A defined rule's conditions are met |
 | `sequence_complete` | `id`, `sequence`, `t_ms` | All steps of a sequence are completed |
 
@@ -82,9 +80,6 @@ function handleEvent(ev: GeoEvent): void {
     case 'recede':
       console.log(`${ev.id} receded from circle "${ev.circle}" at ${ev.t_ms}`)
       break
-    case 'assignment_changed':
-      console.log(`${ev.id} is now in region "${ev.region ?? 'none'}" at ${ev.t_ms}`)
-      break
     case 'rule':
       console.log(`Rule "${ev.name}" fired for ${ev.id} at ${ev.t_ms}`)
       break
@@ -107,17 +102,13 @@ function handleEvent(ev: GeoEvent): void {
 
 The `name` field is the string you passed to `defineRule`. Any extra `data` you attached to the rule is spread onto the event object alongside `id`, `name`, and `t_ms`.
 
-## assignment_changed
-
-`region` is `null` when the entity is outside all catalog regions. This lets you detect when an entity leaves the last known region.
-
 ## sequence_complete
 
 `sequence` is the name of the completed sequence. The event fires on the update that triggered the final step. See [Rules and Sequences](./rules#sequences).
 
 ## GeoJsonPolygonInput
 
-Zone and catalog-region registration methods accept any of these GeoJSON shapes:
+Zone and circle registration methods accept any of these GeoJSON shapes for polygon arguments:
 
 ```typescript
 type GeoJsonPolygonInput =

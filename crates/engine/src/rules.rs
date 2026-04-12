@@ -2,8 +2,8 @@
 
 use spatial::SpatialIndex;
 use state::{
-    assignment_transition, circle_membership_with_dwell, zone_membership_with_dwell, CircleDwell,
-    EntityState, Event, ZoneDwell,
+    circle_membership_with_dwell, zone_membership_with_dwell, CircleDwell, EntityState, Event,
+    ZoneDwell,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -84,35 +84,7 @@ impl SpatialRule for RadiusRule {
     }
 }
 
-/// Primary catalog region assignment (tie-break: lexicographically smallest id).
-#[derive(Debug, Copy, Clone, Default)]
-pub struct CatalogRule;
-
-impl SpatialRule for CatalogRule {
-    fn apply(
-        &self,
-        spatial: &dyn SpatialIndex,
-        ctx: &RuleContext<'_>,
-        state: &mut EntityState,
-        _scratch: &mut BTreeSet<String>,
-        out: &mut Vec<Event>,
-    ) {
-        let new_catalog = spatial.primary_catalog_at(ctx.position);
-        out.extend(assignment_transition(
-            ctx.entity_id,
-            &state.catalog_region,
-            &new_catalog,
-            ctx.at_ms,
-        ));
-        state.catalog_region = new_catalog;
-    }
-}
-
-/// Default pipeline: zone, radius, catalog.
+/// Default pipeline: zone, radius.
 pub fn default_rules() -> Vec<Box<dyn SpatialRule>> {
-    vec![
-        Box::new(ZoneRule),
-        Box::new(RadiusRule),
-        Box::new(CatalogRule),
-    ]
+    vec![Box::new(ZoneRule), Box::new(RadiusRule)]
 }

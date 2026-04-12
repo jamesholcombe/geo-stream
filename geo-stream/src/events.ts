@@ -44,11 +44,6 @@ export type RecedeEvent = BaseEvent & {
   circle: string;
 } & EventMeta;
 
-export type AssignmentChangedEvent = BaseEvent & {
-  kind: "assignment_changed";
-  region: string | null;
-};
-
 export type RuleEvent = {
   kind: "rule";
   name: string;
@@ -65,7 +60,6 @@ export type GeoEvent =
   | ExitEvent
   | ApproachEvent
   | RecedeEvent
-  | AssignmentChangedEvent
   | RuleEvent
   | SequenceCompleteEvent;
 

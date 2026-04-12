@@ -37,7 +37,6 @@ type EnterEvent = Extract<GeoEvent, { kind: "enter" }>;
 type ExitEvent = Extract<GeoEvent, { kind: "exit" }>;
 type ApproachEvent = Extract<GeoEvent, { kind: "approach" }>;
 type RecedeEvent = Extract<GeoEvent, { kind: "recede" }>;
-type AssignmentChangedEvent = Extract<GeoEvent, { kind: "assignment_changed" }>;
 type RuleEvent = Extract<GeoEvent, { kind: "rule" }>;
 type SequenceCompleteEvent = Extract<GeoEvent, { kind: "sequence_complete" }>;
 
@@ -64,11 +63,6 @@ export class GeoEventEmitter extends EventEmitter {
     options?: ZoneOptions,
   ): this {
     this._engine.registerZone(id, polygon, options);
-    return this;
-  }
-
-  registerCatalogRegion(id: string, polygon: GeoJsonPolygonInput): this {
-    this._engine.registerCatalogRegion(id, polygon);
     return this;
   }
 
@@ -103,10 +97,6 @@ export class GeoEventEmitter extends EventEmitter {
   on(event: "exit", listener: (ev: ExitEvent) => void): this;
   on(event: "approach", listener: (ev: ApproachEvent) => void): this;
   on(event: "recede", listener: (ev: RecedeEvent) => void): this;
-  on(
-    event: "assignment_changed",
-    listener: (ev: AssignmentChangedEvent) => void,
-  ): this;
   on(event: "rule", listener: (ev: RuleEvent) => void): this;
   on(
     event: "sequence_complete",
@@ -121,10 +111,6 @@ export class GeoEventEmitter extends EventEmitter {
   once(event: "exit", listener: (ev: ExitEvent) => void): this;
   once(event: "approach", listener: (ev: ApproachEvent) => void): this;
   once(event: "recede", listener: (ev: RecedeEvent) => void): this;
-  once(
-    event: "assignment_changed",
-    listener: (ev: AssignmentChangedEvent) => void,
-  ): this;
   once(event: "rule", listener: (ev: RuleEvent) => void): this;
   once(
     event: "sequence_complete",
@@ -139,10 +125,6 @@ export class GeoEventEmitter extends EventEmitter {
   off(event: "exit", listener: (ev: ExitEvent) => void): this;
   off(event: "approach", listener: (ev: ApproachEvent) => void): this;
   off(event: "recede", listener: (ev: RecedeEvent) => void): this;
-  off(
-    event: "assignment_changed",
-    listener: (ev: AssignmentChangedEvent) => void,
-  ): this;
   off(event: "rule", listener: (ev: RuleEvent) => void): this;
   off(
     event: "sequence_complete",

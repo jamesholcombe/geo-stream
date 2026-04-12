@@ -2,10 +2,10 @@
 id: querying
 title: Querying entities
 sidebar_position: 5
-description: Read current entity state by zone membership, circle membership, region, or proximity to a point.
+description: Read current entity state by zone membership, circle membership, or proximity to a point.
 ---
 
-Between ingests you can query the engine's in-memory state directly — no events required. Queries come in two shapes: membership lookups that filter entities by the zones or regions they are currently inside, and spatial queries that find entities by their distance from a point.
+Between ingests you can query the engine's in-memory state directly — no events required. Queries come in two shapes: membership lookups that filter entities by the zones they are currently inside, and spatial queries that find entities by their distance from a point.
 
 ## Membership queries
 
@@ -51,26 +51,6 @@ engine.ingest([{ id: 'van-1', x: 3, y: 0, tMs: Date.now() }])
 
 const atBay = engine.entitiesInCircle('loading-bay')
 // [{ id: 'van-1', ... }]
-```
-
-### By catalog region
-
-```typescript
-engine.entitiesInRegion(regionId: string): EntityState[]
-```
-
-Returns every entity whose current catalog region matches `regionId`.
-
-```typescript
-engine.registerCatalogRegion('north-district', {
-  type: 'Polygon',
-  coordinates: [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]],
-})
-
-engine.ingest([{ id: 'driver-5', x: 10, y: 10, tMs: Date.now() }])
-
-const northDrivers = engine.entitiesInRegion('north-district')
-// [{ id: 'driver-5', ... }]
 ```
 
 ## Spatial queries

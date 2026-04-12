@@ -101,13 +101,13 @@ fn process_batch_mixed_zones_steady(c: &mut Criterion) {
                 .unwrap();
         }
         engine
-            .register_catalog_region(Zone {
+            .register_zone(Zone {
                 id: "cat-a".into(),
                 polygon: unit_square_at(0.0, 0.0),
             })
             .unwrap();
         engine
-            .register_catalog_region(Zone {
+            .register_zone(Zone {
                 id: "cat-b".into(),
                 polygon: unit_square_at(0.0, 0.0),
             })

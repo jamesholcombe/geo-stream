@@ -97,15 +97,12 @@ pub trait SpatialIndex {
     fn containing_zones(&self, point: (f64, f64)) -> Vec<&Zone>;
     fn zone_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
     fn circle_membership_at(&self, point: (f64, f64), out: &mut BTreeSet<String>);
-    fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String>;
 }
 
 /// R-tree index on polygon bounding boxes with exact `contains` refinement; circles also R-tree indexed.
 pub struct NaiveSpatialIndex {
     fences: Vec<Zone>,
     fence_tree: RTree<IndexedPolygon>,
-    catalog: Vec<Zone>,
-    catalog_tree: RTree<IndexedPolygon>,
     circles: Vec<Circle>,
     circle_tree: RTree<IndexedRadius>,
 }
@@ -115,8 +112,6 @@ impl Default for NaiveSpatialIndex {
         Self {
             fences: Vec::new(),
             fence_tree: RTree::new(),
-            catalog: Vec::new(),
-            catalog_tree: RTree::new(),
             circles: Vec::new(),
             circle_tree: RTree::new(),
         }
@@ -127,7 +122,6 @@ impl fmt::Debug for NaiveSpatialIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NaiveSpatialIndex")
             .field("fences", &self.fences.len())
-            .field("catalog", &self.catalog.len())
             .field("circles", &self.circles.len())
             .finish()
     }
@@ -194,26 +188,6 @@ fn fill_polygon_zone_ids(
     }
 }
 
-fn primary_catalog_at_indexed(
-    catalog: &[Zone],
-    tree: &RTree<IndexedPolygon>,
-    point: (f64, f64),
-) -> Option<String> {
-    let pt = Point::new(point.0, point.1);
-    let probe = point_probe_envelope(point);
-    let mut min_id: Option<&str> = None;
-    for obj in tree.locate_in_envelope_intersecting(&probe) {
-        let f = &catalog[obj.index];
-        if f.polygon.contains(&pt) {
-            let id = f.id.as_str();
-            if min_id.is_none_or(|m| id < m) {
-                min_id = Some(id);
-            }
-        }
-    }
-    min_id.map(String::from)
-}
-
 impl NaiveSpatialIndex {
     pub fn new() -> Self {
         Self::default()
@@ -221,17 +195,10 @@ impl NaiveSpatialIndex {
 
     /// Reconstruct an index from raw zone/circle vecs (e.g. after deserializing a snapshot).
     /// Re-registers every item, rebuilding the R-trees from scratch.
-    pub fn from_vecs(
-        fences: Vec<Zone>,
-        catalog: Vec<Zone>,
-        circles: Vec<Circle>,
-    ) -> Result<Self, SpatialError> {
+    pub fn from_vecs(fences: Vec<Zone>, circles: Vec<Circle>) -> Result<Self, SpatialError> {
         let mut idx = Self::new();
         for zone in fences {
             idx.try_push_zone(zone)?;
-        }
-        for region in catalog {
-            idx.try_push_catalog_region(region)?;
         }
         for circle in circles {
             idx.try_push_circle(circle)?;
@@ -242,11 +209,6 @@ impl NaiveSpatialIndex {
     /// All registered zones (fences).
     pub fn zones(&self) -> &[Zone] {
         &self.fences
-    }
-
-    /// All registered catalog regions.
-    pub fn catalog_regions(&self) -> &[Zone] {
-        &self.catalog
     }
 
     /// All registered circles.
@@ -264,22 +226,6 @@ impl NaiveSpatialIndex {
         self.fences.push(fence);
         let index = self.fences.len() - 1;
         self.fence_tree.insert(IndexedPolygon {
-            index,
-            envelope: env,
-        });
-        Ok(())
-    }
-
-    /// Register a catalog region (`assignment_changed` events; tie-break: lexicographically smallest id).
-    pub fn try_push_catalog_region(&mut self, region: Zone) -> Result<(), SpatialError> {
-        validate_polygon(&region.polygon)?;
-        if self.catalog.iter().any(|r| r.id == region.id) {
-            return Err(SpatialError::DuplicateZoneId(region.id.clone()));
-        }
-        let env = polygon_aabb(&region.polygon)?;
-        self.catalog.push(region);
-        let index = self.catalog.len() - 1;
-        self.catalog_tree.insert(IndexedPolygon {
             index,
             envelope: env,
         });
@@ -305,10 +251,6 @@ impl NaiveSpatialIndex {
 
     pub fn containing_zones(&self, point: (f64, f64)) -> Vec<&Zone> {
         containing_polygons(&self.fences, &self.fence_tree, point)
-    }
-
-    pub fn containing_catalog_regions(&self, point: (f64, f64)) -> Vec<&Zone> {
-        containing_polygons(&self.catalog, &self.catalog_tree, point)
     }
 
     pub fn containing_circles(&self, point: (f64, f64)) -> Vec<&Circle> {
@@ -340,19 +282,6 @@ impl SpatialIndex for NaiveSpatialIndex {
             }
         }
     }
-
-    fn primary_catalog_at(&self, point: (f64, f64)) -> Option<String> {
-        primary_catalog_at_indexed(&self.catalog, &self.catalog_tree, point)
-    }
-}
-
-/// When multiple catalog polygons contain the point, choose the lexicographically smallest id.
-pub fn primary_catalog_region(containing: &[&Zone]) -> Option<String> {
-    containing
-        .iter()
-        .map(|g| g.id.as_str())
-        .min()
-        .map(String::from)
 }
 
 pub fn point_in_polygon(point: (f64, f64), polygon: &Polygon<f64>) -> bool {
@@ -387,16 +316,6 @@ impl NaiveSpatialIndex {
             .filter(|f| f.polygon.contains(&pt))
             .map(|f| f.id.clone())
             .collect()
-    }
-
-    fn linear_primary_catalog_at(&self, p: (f64, f64)) -> Option<String> {
-        let pt = Point::new(p.0, p.1);
-        self.catalog
-            .iter()
-            .filter(|f| f.polygon.contains(&pt))
-            .map(|f| f.id.as_str())
-            .min()
-            .map(String::from)
     }
 
     fn linear_circle_ids_at(&self, p: (f64, f64)) -> BTreeSet<String> {
@@ -554,37 +473,6 @@ mod tests {
         assert!(!z.contains_point(1.01, 0.0));
     }
 
-    #[test]
-    fn primary_catalog_tie_break() {
-        let a = Zone {
-            id: "b".into(),
-            polygon: square(),
-        };
-        let b = Zone {
-            id: "a".into(),
-            polygon: square(),
-        };
-        let refs = vec![&a, &b];
-        assert_eq!(primary_catalog_region(&refs), Some("a".into()));
-    }
-
-    #[test]
-    fn primary_catalog_at_matches_region_refs() {
-        let mut idx = NaiveSpatialIndex::new();
-        idx.try_push_catalog_region(Zone {
-            id: "b".into(),
-            polygon: square(),
-        })
-        .unwrap();
-        idx.try_push_catalog_region(Zone {
-            id: "a".into(),
-            polygon: square(),
-        })
-        .unwrap();
-        assert_eq!(idx.primary_catalog_at((5.0, 5.0)), Some("a".into()));
-        assert_eq!(idx.primary_catalog_at((50.0, 5.0)), None);
-    }
-
     // Zone IDs are scoped per type: the same ID may be reused across different zone types.
 
     #[test]
@@ -601,12 +489,6 @@ mod tests {
             cx: 0.0,
             cy: 0.0,
             r: 1.0,
-        })
-        .unwrap();
-        // Same id "x" as a catalog region — must also succeed.
-        idx.try_push_catalog_region(Zone {
-            id: "x".into(),
-            polygon: square(),
         })
         .unwrap();
     }
@@ -670,30 +552,6 @@ mod tests {
             let mut rt = BTreeSet::new();
             idx.zone_membership_at(p, &mut rt);
             assert_eq!(rt, idx.linear_zone_ids_at(p), "probe {p:?}");
-        }
-    }
-
-    #[test]
-    fn rtree_primary_catalog_matches_linear_scan() {
-        let mut idx = NaiveSpatialIndex::new();
-        for i in 0..12 {
-            idx.try_push_catalog_region(Zone {
-                id: format!("r{i:02}"),
-                polygon: unit_square_at(0.0, i as f64 * 0.5),
-            })
-            .unwrap();
-        }
-        idx.try_push_catalog_region(Zone {
-            id: "r_overlap".into(),
-            polygon: unit_square_at(0.0, 0.0),
-        })
-        .unwrap();
-        for p in [(0.5, 0.5), (0.5, 2.0), (0.5, 100.0)] {
-            assert_eq!(
-                idx.primary_catalog_at(p),
-                idx.linear_primary_catalog_at(p),
-                "probe {p:?}"
-            );
         }
     }
 

@@ -28,7 +28,7 @@ const FEATURES = [
   {
     icon: '🎯',
     title: 'Event-first',
-    body: 'Entities move. State updates. Events fire. Enter, exit, approach, recede, assignment changed.',
+    body: 'Entities move. State updates. Events fire. Enter, exit, approach, recede.',
   },
   {
     icon: '🔧',

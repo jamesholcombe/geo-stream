@@ -50,12 +50,6 @@ enum InputLine {
         #[serde(default, rename = "v")]
         _protocol_version: Option<u8>,
     },
-    RegisterCatalogRegion {
-        id: String,
-        polygon: Value,
-        #[serde(default, rename = "v")]
-        _protocol_version: Option<u8>,
-    },
     RegisterCircle {
         id: String,
         center: [f64; 2],
@@ -103,11 +97,6 @@ enum NdjsonEvent {
         speed: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         heading: Option<f64>,
-    },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
-        t: u64,
     },
     Custom {
         id: String,
@@ -182,13 +171,6 @@ impl From<engine::Event> for NdjsonEvent {
                 speed,
                 heading,
             },
-            engine::Event::AssignmentChanged { id, region, t_ms } => {
-                NdjsonEvent::AssignmentChanged {
-                    id,
-                    region,
-                    t: t_ms,
-                }
-            }
             engine::Event::Custom {
                 id,
                 name,
@@ -260,18 +242,6 @@ where
                     }
                 };
                 if let Err(e) = engine.register_zone(Zone { id, polygon: poly }) {
-                    writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
-                }
-            }
-            InputLine::RegisterCatalogRegion { id, polygon, .. } => {
-                let poly = match polygon_from_json_value(&polygon) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
-                        continue;
-                    }
-                };
-                if let Err(e) = engine.register_catalog_region(Zone { id, polygon: poly }) {
                     writeln_err(&mut err, &format!("line {line_no}: {e}"))?;
                 }
             }

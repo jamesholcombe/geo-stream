@@ -8,7 +8,7 @@ use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
 
-pub use rules::{default_rules, CatalogRule, RadiusRule, RuleContext, SpatialRule, ZoneRule};
+pub use rules::{default_rules, RadiusRule, RuleContext, SpatialRule, ZoneRule};
 pub use spatial::{Circle, SpatialError, SpatialIndex, Zone};
 pub use state::{CircleDwell, EntityState, HistoryPoint, MemoryStateStore, StateStore, ZoneDwell};
 
@@ -47,11 +47,6 @@ pub enum Event {
         t_ms: u64,
         speed: Option<f64>,
         heading: Option<f64>,
-    },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
-        t_ms: u64,
     },
     /// Emitted when a user-defined `ConfigurableRule` matches.
     Custom {
@@ -101,14 +96,11 @@ fn enrich(ev: state::Event, speed: Option<f64>, heading: Option<f64>) -> Event {
             speed,
             heading,
         },
-        state::Event::AssignmentChanged { id, region, t_ms } => {
-            Event::AssignmentChanged { id, region, t_ms }
-        }
     }
 }
 
 /// Stable sort for engine events:
-/// entity_id → t_ms → tier (Zone < Circle < Assignment < Custom < Sequence) → id → enter/approach before exit/recede
+/// entity_id → t_ms → tier (Zone < Circle < Custom < Sequence) → id → enter/approach before exit/recede
 pub fn sort_events_deterministic(events: &mut [Event]) {
     events.sort_by(|a, b| event_sort_key(a).cmp(&event_sort_key(b)));
 }
@@ -117,9 +109,8 @@ pub fn sort_events_deterministic(events: &mut [Event]) {
 enum EventTier {
     Zone = 0,
     Circle = 1,
-    Assignment = 2,
-    Custom = 3,
-    Sequence = 4,
+    Custom = 2,
+    Sequence = 3,
 }
 
 fn event_sort_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
@@ -136,10 +127,6 @@ fn event_sort_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
         Event::Recede {
             id, circle, t_ms, ..
         } => (id.as_str(), *t_ms, EventTier::Circle, circle.as_str(), 1),
-        Event::AssignmentChanged { id, region, t_ms } => {
-            let r = region.as_deref().unwrap_or("");
-            (id.as_str(), *t_ms, EventTier::Assignment, r, 0)
-        }
         Event::Custom { id, name, t_ms, .. } => {
             (id.as_str(), *t_ms, EventTier::Custom, name.as_str(), 0)
         }
@@ -375,7 +362,6 @@ pub trait GeoEngine {
     fn register_zone(&mut self, zone: Zone) -> Result<(), EngineError>;
     fn register_zone_with_dwell(&mut self, zone: Zone, dwell: ZoneDwell)
         -> Result<(), EngineError>;
-    fn register_catalog_region(&mut self, region: Zone) -> Result<(), EngineError>;
     fn register_circle(&mut self, circle: Circle) -> Result<(), EngineError>;
     fn register_circle_with_dwell(
         &mut self,
@@ -417,7 +403,6 @@ pub enum EngineError {
 pub struct EngineSnapshot {
     pub entities: HashMap<String, EntityState>,
     pub fences: Vec<Zone>,
-    pub catalog: Vec<Zone>,
     pub circles: Vec<Circle>,
     pub zone_dwell: HashMap<String, ZoneDwell>,
     pub circle_dwell: HashMap<String, CircleDwell>,
@@ -582,15 +567,6 @@ impl Engine {
             .collect()
     }
 
-    /// Return all entities whose current catalog region matches `region_id`.
-    pub fn entities_in_region(&self, region_id: &str) -> Vec<(&str, &EntityState)> {
-        self.entities
-            .iter()
-            .filter(|(_, st)| st.catalog_region.as_deref() == Some(region_id))
-            .map(|(id, st)| (id.as_str(), st))
-            .collect()
-    }
-
     /// Return all entities within `radius` of `(x, y)`, sorted by distance ascending.
     /// Entities with no known position are excluded.
     pub fn entities_near_point(
@@ -635,14 +611,13 @@ impl Engine {
 
     /// Capture a serializable snapshot of the full engine state.
     ///
-    /// The snapshot includes entity state, all registered zones/circles/catalog regions, dwell
-    /// configs, and configurable/sequence rule definitions. Pass the result to
+    /// The snapshot includes entity state, all registered zones/circles, dwell configs, and
+    /// configurable/sequence rule definitions. Pass the result to
     /// [`Engine::restore_from_snapshot`] (or a [`SnapshotStore`] impl) to persist it.
     pub fn snapshot(&self) -> EngineSnapshot {
         EngineSnapshot {
             entities: self.entities.clone(),
             fences: self.spatial.zones().to_vec(),
-            catalog: self.spatial.catalog_regions().to_vec(),
             circles: self.spatial.circles().to_vec(),
             zone_dwell: self.zone_dwell.clone(),
             circle_dwell: self.circle_dwell.clone(),
@@ -662,7 +637,7 @@ impl Engine {
     /// spatial rule pipeline is rebuilt deterministically. In-flight sequence progress is not
     /// restored (sequences restart from step 0).
     pub fn restore_from_snapshot(snap: EngineSnapshot) -> Result<Self, EngineError> {
-        let spatial = NaiveSpatialIndex::from_vecs(snap.fences, snap.catalog, snap.circles)?;
+        let spatial = NaiveSpatialIndex::from_vecs(snap.fences, snap.circles)?;
         let mut engine = Self {
             spatial,
             zone_dwell: snap.zone_dwell,
@@ -722,11 +697,6 @@ impl GeoEngine for Engine {
         let id = zone.id.clone();
         self.spatial.try_push_zone(zone)?;
         self.zone_dwell.insert(id, dwell);
-        Ok(())
-    }
-
-    fn register_catalog_region(&mut self, region: Zone) -> Result<(), EngineError> {
-        self.spatial.try_push_catalog_region(region)?;
         Ok(())
     }
 
@@ -961,44 +931,6 @@ mod tests {
         assert_eq!(ev.len(), 2);
         assert!(matches!(&ev[0], Event::Enter { id, .. } if id == "a"));
         assert!(matches!(&ev[1], Event::Enter { id, .. } if id == "b"));
-    }
-
-    #[test]
-    fn catalog_assignment_tie_break_smallest_id() {
-        let mut e = Engine::new();
-        e.register_catalog_region(Zone {
-            id: "region-b".into(),
-            polygon: unit_square(),
-        })
-        .unwrap();
-        e.register_catalog_region(Zone {
-            id: "region-a".into(),
-            polygon: unit_square(),
-        })
-        .unwrap();
-
-        let (ev1, errs1) = e.process_batch(vec![PointUpdate {
-            id: "c1".into(),
-            x: 0.5,
-            y: 0.5,
-            t_ms: 0,
-        }]);
-        assert!(errs1.is_empty());
-        assert_eq!(ev1.len(), 1);
-        assert!(matches!(
-            &ev1[0],
-            Event::AssignmentChanged { id, region: Some(r), .. } if id == "c1" && r == "region-a"
-        ));
-
-        let (ev2, errs2) = e.process_batch(vec![PointUpdate {
-            id: "c1".into(),
-            x: 5.0,
-            y: 5.0,
-            t_ms: 0,
-        }]);
-        assert!(errs2.is_empty());
-        assert_eq!(ev2.len(), 1);
-        assert!(matches!(&ev2[0], Event::AssignmentChanged { id, region: None, .. } if id == "c1"));
     }
 
     #[test]
@@ -1821,27 +1753,6 @@ mod tests {
         let result = e.entities_in_circle("bay");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "van-1");
-    }
-
-    #[test]
-    fn entities_in_region_returns_matching() {
-        let mut e = Engine::new();
-        e.register_catalog_region(Zone {
-            id: "north".into(),
-            polygon: unit_square(),
-        })
-        .unwrap();
-        e.process_event(PointUpdate {
-            id: "driver-5".into(),
-            x: 0.5,
-            y: 0.5,
-            t_ms: 1,
-        })
-        .unwrap();
-
-        let result = e.entities_in_region("north");
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, "driver-5");
     }
 
     #[test]

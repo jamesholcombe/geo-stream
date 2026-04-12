@@ -43,7 +43,7 @@ engine.on('sequence_complete', (ev) => {
 engine.ingest(locationUpdates)
 ```
 
-`GeoEventEmitter` exposes the same registration methods as `GeoEngine` (`registerZone`, `registerCircle`, `registerCatalogRegion`, `defineRule`, `defineSequence`), all chainable.
+`GeoEventEmitter` exposes the same registration methods as `GeoEngine` (`registerZone`, `registerCircle`, `defineRule`, `defineSequence`), all chainable.
 
 ### Typed listeners
 

@@ -46,15 +46,7 @@ Radius and polygon tests use the **same planar coordinate system** as `location`
 
 ## Zone id scoping
 
-Zone `id` values are **scoped per registration kind**. The same `id` string may be used independently for a zone, a catalog region, and a circle without conflict. Duplicate ids within the same kind are rejected.
-
-## Input: register catalog region
-
-Same **Polygon** geometry. Semantics: at most one **primary** catalog assignment per entity: the **lexicographically smallest** `id` among all catalog polygons that contain the point. When that primary value changes, an `assignment_changed` event is emitted (including transitions to/from unassigned).
-
-```json
-{"type":"register_catalog_region","id":"ward-north","polygon":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}}
-```
+Zone `id` values are **scoped per registration kind**. The same `id` string may be used independently for a zone and a circle without conflict. Duplicate ids within the same kind are rejected.
 
 ## Input: register circle
 
@@ -89,15 +81,6 @@ Exit:
 {"event":"recede","id":"c1","zone":"anchor-1","t":0}
 ```
 
-## Output: catalog assignment
-
-`region` is `null` when not inside any catalog polygon:
-
-```json
-{"event":"assignment_changed","id":"c1","region":"ward-north","t":0}
-{"event":"assignment_changed","id":"c1","region":null,"t":0}
-```
-
 ## Output: errors (stderr)
 
 ```json
@@ -120,7 +103,7 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 
 1. Entity `id`
 2. Observation time **`t`** (milliseconds)
-3. Category: **zone** (`enter` / `exit`), then **radius** (`approach` / `recede`), then **assignment** (`assignment_changed`)
+3. Category: **zone** (`enter` / `exit`), then **radius** (`approach` / `recede`)
 4. Within a category, by zone / circle id (lexicographic)
 5. For zone and circle: **enter-type** (or `approach`) before **exit-type** (or `recede`)
 
@@ -130,7 +113,7 @@ Within one `process_batch` call, updates are first ordered by **ascending entity
 cargo run -p cli --bin geo-stream -- < examples/sample-input.ndjson
 ```
 
-A larger example with catalog regions and circles: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
+A larger example with circles: [`examples/sample-zones.ndjson`](../examples/sample-zones.ndjson).
 
 Docker (from **this repository root**, where `Cargo.toml` lives):
 

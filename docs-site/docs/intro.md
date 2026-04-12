@@ -8,7 +8,7 @@ description: geo-stream turns location updates into spatial events — in-proces
 
 Entities move through space. The engine tracks which zones they're in. When membership changes, events fire.
 
-That is the entire mental model. You define the zones once, feed in location updates, and receive typed events — `enter`, `exit`, `approach`, `recede`, `assignment_changed` — whenever something meaningful happens. No polling, no queries, no database.
+That is the entire mental model. You define the zones once, feed in location updates, and receive typed events — `enter`, `exit`, `approach`, `recede` — whenever something meaningful happens. No polling, no queries, no database.
 
 ## How the system thinks
 
@@ -16,9 +16,9 @@ Three concepts are enough to reason about any geo-stream behavior:
 
 **Entities** are anything you track: drivers, vehicles, assets, people. Each has an `id` and moves through space as location updates arrive.
 
-**State** is what the engine remembers: which zones each entity is currently inside, which catalog region it belongs to, its last known position. State is updated on every `ingest()` call.
+**State** is what the engine remembers: which zones each entity is currently inside, its last known position. State is updated on every `ingest()` call.
 
-**Events** fire when state changes. An entity entering a zone produces `enter`. Leaving produces `exit`. Moving from one catalog region to another produces `assignment_changed`. Events carry the entity `id`, the zone or region identifier, and the timestamp (`t_ms`) of the update that caused the transition.
+**Events** fire when state changes. An entity entering a zone produces `enter`. Leaving produces `exit`. Entering a circle produces `approach`; leaving produces `recede`. Events carry the entity `id`, the zone or circle identifier, and the timestamp (`t_ms`) of the update that caused the transition.
 
 Nothing happens between updates. The engine is event-driven: you push updates in, events come out, the rest of the time it is quiet.
 
@@ -68,15 +68,14 @@ for (const ev of departures) {
 
 ## The primitives
 
-Three zone types produce four pairs of events:
+Two zone types produce two pairs of events:
 
 | Zone type | Registration | Events |
 |-----------|-------------|--------|
 | Polygon zone | `registerZone` | `enter` / `exit` |
 | Circle | `registerCircle` | `approach` / `recede` |
-| Catalog region | `registerCatalogRegion` | `assignment_changed` |
 
-All three coexist on the same engine. A single location update is evaluated against every registered zone and region simultaneously.
+Both coexist on the same engine. A single location update is evaluated against every registered zone simultaneously.
 
 Rules and sequences let you compose these primitives further — emit a custom event when an entity enters a zone at speed, or detect when a driver completes a multi-stop route in order. See [Rules and Sequences](./rules).
 
