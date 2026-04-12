@@ -63,7 +63,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
-          path: geo-stream/*.node
+          path: geo-stream/src/*.node
           if-no-files-found: error
 
   # ── 2. Collect all binaries, publish to npm, and create GitHub release ─────
