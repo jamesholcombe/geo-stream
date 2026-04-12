@@ -2,7 +2,7 @@
 
 # geo-stream
 
-**Turn location streams into meaningful events**
+**An embeddable rules engine for location streams**
 
 [![npm version](https://img.shields.io/npm/v/geo-stream?style=flat-square&color=cb3837)](https://www.npmjs.com/package/@jamesholcombe/geo-stream)
 [![CI](https://img.shields.io/github/actions/workflow/status/jamesholcombe/geo-stream/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/jamesholcombe/geo-stream/actions/workflows/ci.yml)
@@ -13,9 +13,23 @@
 
 ---
 
-An embeddable geospatial stream processor. Feed it location updates; receive structured spatial events — enter/exit zones, approach/recede circles, assignment changes. Runs in-process with no external dependencies.
+Drop it into your Node.js or Rust service. Feed it location updates; receive typed spatial events — `enter`/`exit` zones, `approach`/`recede` circles, custom rule triggers, sequence completions. No server to run, no network round-trips, no schema to migrate.
 
 **[Documentation →](https://jamesholcombe.github.io/geo-stream/)**
+
+---
+
+### Why in-process?
+
+External geofencing services (database-backed or network-protocol-based) require a round-trip per position update and fire events asynchronously with no delivery or ordering guarantees. geo-stream runs inside your process:
+
+- **Zero latency** — no network hop between position update and event
+- **Deterministic** — same inputs always produce the same events in the same order; replay and testing are exact
+- **Dwell/debounce built in** — suppress noisy enter/exit cycling without external state
+- **Sequence rules** — detect multi-step patterns (entity enters zone A, then zone B, within N ms) that an external service cannot represent
+- **Speed and heading filters** — emit custom events only when an entity is above speed or travelling in a direction
+
+> **Coordinate system note:** geo-stream currently operates on a flat Euclidean plane. GPS lat/lng coordinates can be used, but distance-based operations (circles, `entities_near_point`) produce approximate results at scale. WGS84/geodesic mode is on the [roadmap](ROADMAP.md).
 
 ---
 

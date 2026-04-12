@@ -8,32 +8,32 @@ const CODE_SNIPPET = `import { GeoEngine } from '@jamesholcombe/geo-stream'
 
 const engine = new GeoEngine()
   .registerZone('warehouse', warehousePolygon)
-  // cx = longitude, cy = latitude (same as PointUpdate x / y)
-  .registerCircle('depot', -0.12, 51.5, 0.5)
+  .registerCircle('depot', 500, 300, 50)  // cx, cy, radius (metres)
   .defineRule('fast-entry', rule =>
-    rule.whenEnters('warehouse').speedAbove(15).emit('alert')
+    rule.whenEnters('warehouse').speedAbove(15).emit('speeding-alert')
   )
 
+// Feed in position updates — events come back synchronously
 const events = engine.ingest([
-  { id: 'driver-1', x: -0.12, y: 51.5, tMs: Date.now() },
+  { id: 'driver-1', x: 505, y: 298, tMs: Date.now() },
 ])
 // [{ kind: 'approach', id: 'driver-1', circle: 'depot', t_ms: ... }]`;
 
 const FEATURES = [
   {
     icon: '⚡',
-    title: 'In-process, zero infra',
-    body: 'A native Rust module. No server, no database, no network calls. Drop it into any Node.js process.',
+    title: 'In-process, zero latency',
+    body: 'A native Rust module. No server, no network hop, no round-trip per update. State lives in your process.',
   },
   {
-    icon: '🎯',
-    title: 'Event-first',
-    body: 'Entities move. State updates. Events fire. Enter, exit, approach, recede.',
+    icon: '🔁',
+    title: 'Deterministic',
+    body: 'Same inputs always produce the same events in the same order. Replay, backtest, and unit test with exact reproducibility.',
   },
   {
-    icon: '🔧',
-    title: 'Rules and sequences',
-    body: 'Emit custom events when an entity enters a zone at speed. Detect ordered multi-stop routes.',
+    icon: '⏱️',
+    title: 'Dwell and sequences',
+    body: 'Debounce noisy boundary crossings with per-zone dwell thresholds. Detect ordered multi-stop routes with sequence rules.',
   },
   {
     icon: '🔌',
@@ -50,13 +50,13 @@ function Hero() {
       <div className={styles.heroInner}>
         <div className={styles.badge}>Open source · MIT · Node.js 18+</div>
         <h1 className={styles.heroTitle}>
-          Turn location streams into
-          <span className={styles.heroTitleAccent}> meaningful events</span>
+          An embeddable rules engine
+          <span className={styles.heroTitleAccent}> for location streams</span>
         </h1>
         <p className={styles.heroSubtitle}>
-          Entities move through space. geo-stream tracks their state, evaluates
-          your rules, and emits typed events — enter, exit, approach, recede —
-          synchronously, in-process.
+          Drop it into your Node.js process. Feed it position updates. Receive
+          typed spatial events — enter, exit, approach, recede — synchronously,
+          with no server, no network calls, and no external dependencies.
         </p>
         <div className={styles.heroActions}>
           <Link className={styles.btnPrimary} to="/docs/">
@@ -143,8 +143,8 @@ function Install() {
 export default function Home(): ReactNode {
   return (
     <Layout
-      title="Turn location streams into meaningful events"
-      description="An embeddable geospatial stream processor. Feed it location updates; receive typed spatial events."
+      title="An embeddable rules engine for location streams"
+      description="Drop it into your Node.js process. No server, no network round-trips. Deterministic spatial events with built-in dwell, sequence rules, and speed/heading filters."
       noFooter={false}
     >
       <main className={styles.main}>

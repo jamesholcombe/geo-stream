@@ -1,6 +1,10 @@
 # @jamesholcombe/geo-stream
 
-Native Node.js bindings for the **geo-stream** geospatial stream processor. Feed it location updates; receive structured spatial events — enter/exit zones, approach/recede circles, assignment changes. Runs in-process with no external dependencies.
+An embeddable rules engine for location streams. Feed it position updates; receive typed spatial events — `enter`/`exit` zones, `approach`/`recede` circles, custom rule triggers, sequence completions. Runs inside your Node.js process with no server, no network round-trips, and no external dependencies.
+
+**When to use this instead of an external geofencing service:** geo-stream is the right choice when you need deterministic event ordering (same inputs always produce the same events in the same order), built-in dwell/debounce to suppress noisy boundary crossings, multi-step sequence detection across a series of zones, or speed and heading filters on event conditions. These behaviours require external state if you are using a network-based service.
+
+> **Coordinate system:** geo-stream currently operates on a flat Euclidean plane. It works correctly with any consistent unit (metres, degrees, etc.) as long as you do not mix units or expect accurate distance calculations across large WGS84 extents. WGS84/geodesic support is planned — see the [roadmap](https://github.com/jamesholcombe/geo-events/blob/main/ROADMAP.md).
 
 ## Install
 
