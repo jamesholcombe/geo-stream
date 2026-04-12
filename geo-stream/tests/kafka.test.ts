@@ -70,7 +70,6 @@ function makeEngine(
   return {
     ingestCalls,
     registerZone() {},
-    registerCatalogRegion() {},
     registerCircle() {},
     ingest(updates: PointUpdate[]) {
       ingestCalls.push(updates);

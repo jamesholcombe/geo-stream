@@ -53,7 +53,6 @@ interface NativeNode extends InstanceType<typeof GeoEngineNode> {
   getEntities(): EntityStateJs[];
   entitiesInZone(zoneId: string): EntityStateJs[];
   entitiesInCircle(circleId: string): EntityStateJs[];
-  entitiesInRegion(regionId: string): EntityStateJs[];
   entitiesNearPoint(
     x: number,
     y: number,
@@ -120,11 +119,6 @@ export class GeoEngine {
     return this;
   }
 
-  registerCatalogRegion(id: string, polygon: GeoJsonPolygonInput): this {
-    this.node.registerCatalogRegion(id, polygon as unknown);
-    return this;
-  }
-
   // --- Rules ---
 
   defineRule(name: string, fn: (rule: RuleBuilder) => RuleConfig): this {
@@ -166,11 +160,6 @@ export class GeoEngine {
   /** Return all entities currently inside the named circle. */
   entitiesInCircle(circleId: string): EntityState[] {
     return this.node.entitiesInCircle(circleId).map(jsToEntityState);
-  }
-
-  /** Return all entities whose current catalog region matches `regionId`. */
-  entitiesInRegion(regionId: string): EntityState[] {
-    return this.node.entitiesInRegion(regionId).map(jsToEntityState);
   }
 
   /**

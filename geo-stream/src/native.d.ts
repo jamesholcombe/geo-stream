@@ -11,8 +11,6 @@ export declare class GeoEngineNode {
     polygon: any,
     dwell?: DwellOptionsJs | undefined | null,
   ): void;
-  /** Register a named catalog region from a GeoJSON Polygon object. */
-  registerCatalogRegion(id: string, polygon: any): void;
   /**
    * Register a named circle by center point and radius (same units as coordinates).
    * Optionally provide dwell thresholds to debounce approach/recede events.
@@ -36,8 +34,6 @@ export declare class GeoEngineNode {
   entitiesInZone(zoneId: string): Array<EntityStateJs>;
   /** Return all entities whose logical circle membership includes `circle_id`. */
   entitiesInCircle(circleId: string): Array<EntityStateJs>;
-  /** Return all entities whose current catalog region matches `region_id`. */
-  entitiesInRegion(regionId: string): Array<EntityStateJs>;
   /** Return all entities within `radius` of `(x, y)`, sorted by distance ascending. */
   entitiesNearPoint(
     x: number,

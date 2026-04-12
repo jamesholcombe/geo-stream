@@ -55,7 +55,6 @@ pub struct EntityState {
     pub circle_enter_pending: HashMap<String, u64>,
     /// Circle id → first `at_ms` seen outside while logically inside (waiting for [`CircleDwell::min_outside_ms`]).
     pub circle_exit_pending: HashMap<String, u64>,
-    pub catalog_region: Option<String>,
 }
 
 /// Emitted when spatial relationships change between updates.
@@ -79,11 +78,6 @@ pub enum Event {
     Recede {
         id: String,
         circle: String,
-        t_ms: u64,
-    },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
         t_ms: u64,
     },
 }
@@ -111,23 +105,6 @@ pub fn membership_transitions(
         });
     }
     out
-}
-
-pub fn assignment_transition(
-    entity_id: &str,
-    previous: &Option<String>,
-    current: &Option<String>,
-    t_ms: u64,
-) -> Vec<Event> {
-    if previous == current {
-        Vec::new()
-    } else {
-        vec![Event::AssignmentChanged {
-            id: entity_id.to_string(),
-            region: current.clone(),
-            t_ms,
-        }]
-    }
 }
 
 /// Shared dwell logic for zone and circle membership.
@@ -342,7 +319,6 @@ pub fn sort_events_deterministic(events: &mut [Event]) {
 enum EventTier {
     Zone = 0,
     Circle = 1,
-    Assignment = 2,
 }
 
 fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
@@ -354,10 +330,6 @@ fn event_ord_key(e: &Event) -> (&str, u64, EventTier, &str, u8) {
         }
         Event::Recede { id, circle, t_ms } => {
             (id.as_str(), *t_ms, EventTier::Circle, circle.as_str(), 1)
-        }
-        Event::AssignmentChanged { id, region, t_ms } => {
-            let r = region.as_deref().unwrap_or("");
-            (id.as_str(), *t_ms, EventTier::Assignment, r, 0)
         }
     }
 }
@@ -388,41 +360,6 @@ mod tests {
         let ev = membership_transitions("e1", &prev, &cur, 0);
         assert_eq!(ev.len(), 1);
         assert!(matches!(&ev[0], Event::Exit { .. }));
-    }
-
-    #[test]
-    fn assignment_no_event_when_unchanged() {
-        let prev = Some("a".into());
-        let cur = Some("a".into());
-        assert!(assignment_transition("e", &prev, &cur, 1).is_empty());
-    }
-
-    #[test]
-    fn assignment_emits_when_changes() {
-        let ev = assignment_transition("e", &None, &Some("r1".into()), 9);
-        assert_eq!(ev.len(), 1);
-        assert!(matches!(
-            &ev[0],
-            Event::AssignmentChanged { id, region: Some(r), t_ms: 9 } if id == "e" && r == "r1"
-        ));
-    }
-
-    #[test]
-    fn sort_orders_tiers() {
-        let mut ev = vec![
-            Event::AssignmentChanged {
-                id: "a".into(),
-                region: Some("z".into()),
-                t_ms: 1,
-            },
-            Event::Enter {
-                id: "a".into(),
-                zone: "f".into(),
-                t_ms: 1,
-            },
-        ];
-        sort_events_deterministic(&mut ev);
-        assert!(matches!(&ev[0], Event::Enter { .. }));
     }
 
     #[test]

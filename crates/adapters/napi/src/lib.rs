@@ -146,11 +146,6 @@ enum EventDto {
         #[serde(skip_serializing_if = "Option::is_none")]
         heading: Option<f64>,
     },
-    AssignmentChanged {
-        id: String,
-        region: Option<String>,
-        t_ms: u64,
-    },
     Rule {
         id: String,
         name: String,
@@ -224,9 +219,6 @@ impl From<engine::Event> for EventDto {
                 speed,
                 heading,
             },
-            engine::Event::AssignmentChanged { id, region, t_ms } => {
-                EventDto::AssignmentChanged { id, region, t_ms }
-            }
             engine::Event::Custom {
                 id,
                 name,
@@ -353,21 +345,6 @@ impl GeoEngineNode {
         }
     }
 
-    /// Register a named catalog region from a GeoJSON Polygon object.
-    #[napi]
-    pub fn register_catalog_region(
-        &mut self,
-        id: String,
-        polygon: serde_json::Value,
-    ) -> napi::Result<()> {
-        let poly = polygon_from_json_value(&polygon)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        let region = Zone { id, polygon: poly };
-        self.inner
-            .register_catalog_region(region)
-            .map_err(engine_err)
-    }
-
     /// Register a named circle by center point and radius (same units as coordinates).
     /// Optionally provide dwell thresholds to debounce approach/recede events.
     #[napi]
@@ -446,16 +423,6 @@ impl GeoEngineNode {
     pub fn entities_in_circle(&self, circle_id: String) -> Vec<EntityStateJs> {
         self.inner
             .entities_in_circle(&circle_id)
-            .into_iter()
-            .filter_map(|(id, st)| entity_to_js(id, st))
-            .collect()
-    }
-
-    /// Return all entities whose current catalog region matches `region_id`.
-    #[napi]
-    pub fn entities_in_region(&self, region_id: String) -> Vec<EntityStateJs> {
-        self.inner
-            .entities_in_region(&region_id)
             .into_iter()
             .filter_map(|(id, st)| entity_to_js(id, st))
             .collect()

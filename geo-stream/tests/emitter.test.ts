@@ -24,7 +24,6 @@ function makeEngine(
       _polygon: GeoJsonPolygonInput,
       _dwell?: DwellOptions,
     ) {},
-    registerCatalogRegion(_id: string, _polygon: GeoJsonPolygonInput) {},
     registerCircle(_id: string, _cx: number, _cy: number, _r: number) {},
     ingest(updates: PointUpdate[]) {
       calls.push(updates);
@@ -105,51 +104,17 @@ describe("GeoEventEmitter — event emission", () => {
     assert.deepEqual(received[0], event);
   });
 
-  it("emits assignment_changed with non-null region", () => {
-    const event: GeoEvent = {
-      kind: "assignment_changed",
-      id: "v1",
-      region: "r1",
-      t_ms: 5000,
-    };
-    const emitter = new GeoEventEmitter(makeEngine([event]));
-    const received: GeoEvent[] = [];
-    emitter.on("assignment_changed", (ev) => received.push(ev));
-    emitter.ingest([UPDATE]);
-    assert.deepEqual(received[0], event);
-  });
-
-  it("emits assignment_changed with null region (unassigned)", () => {
-    const event: GeoEvent = {
-      kind: "assignment_changed",
-      id: "v1",
-      region: null,
-      t_ms: 6000,
-    };
-    const emitter = new GeoEventEmitter(makeEngine([event]));
-    const received: GeoEvent[] = [];
-    emitter.on("assignment_changed", (ev) => received.push(ev));
-    emitter.ingest([UPDATE]);
-    const ev = received[0];
-    assert.equal(
-      ev.kind === "assignment_changed" ? ev.region : "wrong-kind",
-      null,
-    );
-  });
-
   it("emits multiple events from a single ingest in order", () => {
     const events: GeoEvent[] = [
       { kind: "enter", id: "v1", zone: "z1", t_ms: 1000 },
-      { kind: "assignment_changed", id: "v1", region: "r1", t_ms: 1000 },
       { kind: "approach", id: "v1", circle: "c1", t_ms: 1000 },
     ];
     const emitter = new GeoEventEmitter(makeEngine(events));
     const received: string[] = [];
     emitter.on("enter", () => received.push("enter"));
-    emitter.on("assignment_changed", () => received.push("assignment_changed"));
     emitter.on("approach", () => received.push("approach"));
     emitter.ingest([UPDATE]);
-    assert.deepEqual(received, ["enter", "assignment_changed", "approach"]);
+    assert.deepEqual(received, ["enter", "approach"]);
   });
 
   it("emits no events when engine returns empty array", () => {
@@ -201,12 +166,6 @@ describe("GeoEventEmitter — chaining and delegation", () => {
     const engine = makeEngine();
     const emitter = new GeoEventEmitter(engine);
     assert.equal(emitter.registerZone("z", POLYGON), emitter);
-  });
-
-  it("registerCatalogRegion() returns this", () => {
-    const engine = makeEngine();
-    const emitter = new GeoEventEmitter(engine);
-    assert.equal(emitter.registerCatalogRegion("r", POLYGON), emitter);
   });
 
   it("registerCircle() returns this", () => {

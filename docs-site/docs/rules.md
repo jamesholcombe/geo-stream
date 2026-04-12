@@ -135,7 +135,7 @@ If the driver visits `customer-site` before `loading-bay`, the sequence does not
 
 ### Combining rules and sequences
 
-Rules and sequences work alongside basic zone events on the same engine. A single `ingest()` call can produce `enter`, `assignment_changed`, `rule`, and `sequence_complete` events simultaneously.
+Rules and sequences work alongside basic zone events on the same engine. A single `ingest()` call can produce `enter`, `rule`, and `sequence_complete` events simultaneously.
 
 ```typescript
 const engine = new GeoEngine()

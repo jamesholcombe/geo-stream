@@ -2,10 +2,10 @@
 id: zone-types
 title: Zone Types
 sidebar_position: 3
-description: Polygon zones, circles, and catalog regions — the three zone types and the events they emit.
+description: Polygon zones and circles — the two zone types and the events they emit.
 ---
 
-geo-stream has three zone types. Each emits a distinct pair of events and is registered once at setup time.
+geo-stream has two zone types. Each emits a distinct pair of events and is registered once at setup time.
 
 All registration methods return `this`, so they chain:
 
@@ -13,7 +13,6 @@ All registration methods return `this`, so they chain:
 const engine = new GeoEngine()
   .registerZone('warehouse', warehousePolygon)
   .registerCircle('depot-beacon', 7, 7, 1.5)
-  .registerCatalogRegion('district-north', northPolygon)
 ```
 
 ## Polygon Zones
@@ -65,48 +64,6 @@ const events = engine.ingest([
   { id: 'vehicle-1', x: 0.5, y: 0.5, tMs: 1_700_000_000_000 },
 ])
 // [{ kind: 'enter', id: 'vehicle-1', zone: 'city-centre', t_ms: 1700000000000 }]
-```
-
-## Catalog Regions
-
-```typescript
-engine.registerCatalogRegion(id: string, polygon: GeoJsonPolygonInput): this
-```
-
-Catalog regions represent mutually exclusive named areas — delivery zones, service territories, districts. The engine emits `assignment_changed` when an entity's containing region changes.
-
-An entity is assigned to **at most one region** at a time — the lexicographically smallest matching ID when regions overlap. `assignment_changed` fires when the entity:
-
-- Moves from one region into a different region
-- Enters a region from outside all regions
-- Leaves all regions (emitted with `region: null`)
-
-:::caution
-If regions overlap, the one with the lexicographically smallest ID wins. Design your regions to be non-overlapping to avoid unexpected assignments.
-:::
-
-**Example:**
-
-```typescript
-engine.registerCatalogRegion('district-north', {
-  type: 'Polygon',
-  coordinates: [[[0, 5], [10, 5], [10, 10], [0, 10], [0, 5]]],
-})
-engine.registerCatalogRegion('district-south', {
-  type: 'Polygon',
-  coordinates: [[[0, 0], [10, 0], [10, 5], [0, 5], [0, 0]]],
-})
-
-const t0 = 1_700_000_000_000
-
-engine.ingest([{ id: 'truck-1', x: 5, y: 2, tMs: t0 }])
-// [{ kind: 'assignment_changed', id: 'truck-1', region: 'district-south', t_ms: ... }]
-
-engine.ingest([{ id: 'truck-1', x: 5, y: 8, tMs: t0 + 30_000 }])
-// [{ kind: 'assignment_changed', id: 'truck-1', region: 'district-north', t_ms: ... }]
-
-engine.ingest([{ id: 'truck-1', x: 50, y: 50, tMs: t0 + 60_000 }])
-// [{ kind: 'assignment_changed', id: 'truck-1', region: null, t_ms: ... }]
 ```
 
 ## Circles
