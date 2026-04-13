@@ -394,9 +394,8 @@ impl GeoEngineNode {
     /// Return the current state snapshot for an entity, or undefined if not yet seen.
     #[napi]
     pub fn get_entity_state(&self, id: String) -> Option<EntityStateJs> {
-        self.inner
-            .get_entity_state(&id)
-            .and_then(|st| entity_to_js(&id, st))
+        let st = self.inner.get_entity_state(&id).ok()??;
+        entity_to_js(&id, &st)
     }
 
     /// Return state snapshots for all known entities.
@@ -404,7 +403,9 @@ impl GeoEngineNode {
     pub fn get_entities(&self) -> Vec<EntityStateJs> {
         self.inner
             .get_entities()
-            .filter_map(|(id, st)| entity_to_js(id, st))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(id, st)| entity_to_js(&id, &st))
             .collect()
     }
 
@@ -413,8 +414,9 @@ impl GeoEngineNode {
     pub fn entities_in_zone(&self, zone_id: String) -> Vec<EntityStateJs> {
         self.inner
             .entities_in_zone(&zone_id)
+            .unwrap_or_default()
             .into_iter()
-            .filter_map(|(id, st)| entity_to_js(id, st))
+            .filter_map(|(id, st)| entity_to_js(&id, &st))
             .collect()
     }
 
@@ -423,8 +425,9 @@ impl GeoEngineNode {
     pub fn entities_in_circle(&self, circle_id: String) -> Vec<EntityStateJs> {
         self.inner
             .entities_in_circle(&circle_id)
+            .unwrap_or_default()
             .into_iter()
-            .filter_map(|(id, st)| entity_to_js(id, st))
+            .filter_map(|(id, st)| entity_to_js(&id, &st))
             .collect()
     }
 
@@ -433,8 +436,9 @@ impl GeoEngineNode {
     pub fn entities_near_point(&self, x: f64, y: f64, radius: f64) -> Vec<EntityWithDistanceJs> {
         self.inner
             .entities_near_point(x, y, radius)
+            .unwrap_or_default()
             .into_iter()
-            .filter_map(|(id, st, dist)| entity_to_js_with_distance(id, st, dist))
+            .filter_map(|(id, st, dist)| entity_to_js_with_distance(&id, &st, dist))
             .collect()
     }
 
@@ -443,8 +447,9 @@ impl GeoEngineNode {
     pub fn nearest_to_point(&self, x: f64, y: f64, k: i32) -> Vec<EntityWithDistanceJs> {
         self.inner
             .nearest_to_point(x, y, k.max(0) as usize)
+            .unwrap_or_default()
             .into_iter()
-            .filter_map(|(id, st, dist)| entity_to_js_with_distance(id, st, dist))
+            .filter_map(|(id, st, dist)| entity_to_js_with_distance(&id, &st, dist))
             .collect()
     }
 

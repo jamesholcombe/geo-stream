@@ -1,4 +1,6 @@
 use clap::Parser;
+#[cfg(feature = "redis-backend")]
+use engine::EngineOptions;
 use engine::{Engine, FileSnapshotStore, SnapshotStore};
 use std::io;
 use std::path::PathBuf;
@@ -21,6 +23,42 @@ struct Args {
     /// Path to write an engine state snapshot after processing completes.
     #[arg(long)]
     snapshot_file: Option<PathBuf>,
+}
+
+/// Build an engine using the backing store selected by `GEO_EVENTS_STATE_BACKEND`.
+///
+/// Supported values:
+/// - `memory` (default) — in-process HashMap, no persistence.
+/// - `redis://…` / `rediss://…` — Redis via `state-redis` (requires `--features redis-backend`).
+fn build_engine() -> Engine {
+    let backend = std::env::var("GEO_EVENTS_STATE_BACKEND").unwrap_or_default();
+    let url = backend.trim();
+
+    if url.starts_with("redis://") || url.starts_with("rediss://") {
+        build_redis_engine(url)
+    } else {
+        Engine::new()
+    }
+}
+
+#[cfg(feature = "redis-backend")]
+fn build_redis_engine(url: &str) -> Engine {
+    match state_redis::RedisStateStore::new(url, "geo-events") {
+        Ok(store) => Engine::with_store(store, EngineOptions::default()),
+        Err(e) => {
+            eprintln!("geo-stream: failed to connect to Redis ({url}): {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(not(feature = "redis-backend"))]
+fn build_redis_engine(url: &str) -> Engine {
+    eprintln!(
+        "geo-stream: GEO_EVENTS_STATE_BACKEND={url} requires the `redis-backend` feature.\n\
+         Rebuild with: cargo build --features redis-backend"
+    );
+    std::process::exit(1);
 }
 
 fn main() {
@@ -46,7 +84,7 @@ fn main() {
             }
         }
     } else {
-        Engine::new()
+        build_engine()
     };
 
     let stdin = io::stdin().lock();
@@ -62,7 +100,14 @@ fn main() {
 
     if let Some(path) = &args.snapshot_file {
         let store = FileSnapshotStore { path: path.clone() };
-        if let Err(e) = store.save(&engine.snapshot()) {
+        let snap = match engine.snapshot() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("geo-stream: failed to capture snapshot: {e}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = store.save(&snap) {
             eprintln!("geo-stream: failed to save snapshot: {e}");
             std::process::exit(1);
         }

@@ -10,7 +10,9 @@ use thiserror::Error;
 
 pub use rules::{default_rules, RadiusRule, RuleContext, SpatialRule, ZoneRule};
 pub use spatial::{Circle, SpatialError, SpatialIndex, Zone};
-pub use state::{CircleDwell, EntityState, HistoryPoint, MemoryStateStore, StateStore, ZoneDwell};
+pub use state::{
+    CircleDwell, EntityState, HistoryPoint, MemoryStateStore, StateStore, StoreError, ZoneDwell,
+};
 
 // ---------------------------------------------------------------------------
 // Public event type
@@ -387,6 +389,8 @@ pub enum EngineError {
         last_t_ms: u64,
         incoming_t_ms: u64,
     },
+    #[error("state store: {0}")]
+    StateStore(#[from] StoreError),
 }
 
 // ---------------------------------------------------------------------------
@@ -466,7 +470,7 @@ pub struct Engine {
     zone_dwell: HashMap<String, ZoneDwell>,
     /// Per circle id: minimum inside/outside dwell before approach/recede events.
     circle_dwell: HashMap<String, CircleDwell>,
-    entities: HashMap<String, EntityState>,
+    entities: Box<dyn StateStore>,
     /// Reused between membership tiers to avoid cloning [`EntityState`] sets each update.
     membership_scratch: BTreeSet<String>,
     rules: Vec<Box<dyn SpatialRule>>,
@@ -481,7 +485,6 @@ impl fmt::Debug for Engine {
             .field("spatial", &self.spatial)
             .field("zone_dwell", &self.zone_dwell.len())
             .field("circle_dwell", &self.circle_dwell.len())
-            .field("entities", &self.entities)
             .field("rules", &self.rules.len())
             .field("configurable_rules", &self.configurable_rules.len())
             .field("sequence_rules", &self.sequence_rules.len())
@@ -506,7 +509,25 @@ impl Engine {
             spatial: NaiveSpatialIndex::default(),
             zone_dwell: HashMap::new(),
             circle_dwell: HashMap::new(),
-            entities: HashMap::new(),
+            entities: Box::new(MemoryStateStore::default()),
+            membership_scratch: BTreeSet::new(),
+            rules: rules::default_rules(),
+            configurable_rules: Vec::new(),
+            sequence_rules: Vec::new(),
+            history_size: opts.history_size,
+        }
+    }
+
+    /// Construct an engine backed by a custom [`StateStore`] (e.g. Redis).
+    ///
+    /// The store is used for all entity state reads and writes. Use this when you need state to
+    /// survive process restarts or be shared across multiple engine instances.
+    pub fn with_store(store: impl StateStore + 'static, opts: EngineOptions) -> Self {
+        Self {
+            spatial: NaiveSpatialIndex::default(),
+            zone_dwell: HashMap::new(),
+            circle_dwell: HashMap::new(),
+            entities: Box::new(store),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
             configurable_rules: Vec::new(),
@@ -520,7 +541,7 @@ impl Engine {
             spatial: NaiveSpatialIndex::default(),
             zone_dwell: HashMap::new(),
             circle_dwell: HashMap::new(),
-            entities: HashMap::new(),
+            entities: Box::new(MemoryStateStore::default()),
             membership_scratch: BTreeSet::new(),
             rules,
             configurable_rules: Vec::new(),
@@ -540,31 +561,39 @@ impl Engine {
     }
 
     /// Return a snapshot of the current state for the given entity, or `None` if unseen.
-    pub fn get_entity_state(&self, id: &str) -> Option<&EntityState> {
+    pub fn get_entity_state(&self, id: &str) -> Result<Option<EntityState>, StoreError> {
         self.entities.get(id)
     }
 
     /// Return snapshots for all known entities.
-    pub fn get_entities(&self) -> impl Iterator<Item = (&str, &EntityState)> {
-        self.entities.iter().map(|(k, v)| (k.as_str(), v))
+    pub fn get_entities(&self) -> Result<Vec<(String, EntityState)>, StoreError> {
+        self.entities.all_entities()
     }
 
     /// Return all entities whose logical zone membership includes `zone_id`.
-    pub fn entities_in_zone(&self, zone_id: &str) -> Vec<(&str, &EntityState)> {
-        self.entities
-            .iter()
+    pub fn entities_in_zone(
+        &self,
+        zone_id: &str,
+    ) -> Result<Vec<(String, EntityState)>, StoreError> {
+        Ok(self
+            .entities
+            .all_entities()?
+            .into_iter()
             .filter(|(_, st)| st.inside.contains(zone_id))
-            .map(|(id, st)| (id.as_str(), st))
-            .collect()
+            .collect())
     }
 
     /// Return all entities whose logical circle membership includes `circle_id`.
-    pub fn entities_in_circle(&self, circle_id: &str) -> Vec<(&str, &EntityState)> {
-        self.entities
-            .iter()
+    pub fn entities_in_circle(
+        &self,
+        circle_id: &str,
+    ) -> Result<Vec<(String, EntityState)>, StoreError> {
+        Ok(self
+            .entities
+            .all_entities()?
+            .into_iter()
             .filter(|(_, st)| st.inside_circle.contains(circle_id))
-            .map(|(id, st)| (id.as_str(), st))
-            .collect()
+            .collect())
     }
 
     /// Return all entities within `radius` of `(x, y)`, sorted by distance ascending.
@@ -574,49 +603,58 @@ impl Engine {
         x: f64,
         y: f64,
         radius: f64,
-    ) -> Vec<(&str, &EntityState, f64)> {
+    ) -> Result<Vec<(String, EntityState, f64)>, StoreError> {
         let r2 = radius * radius;
         let mut out: Vec<_> = self
             .entities
-            .iter()
+            .all_entities()?
+            .into_iter()
             .filter_map(|(id, st)| {
                 let (ex, ey) = st.position?;
                 let dx = ex - x;
                 let dy = ey - y;
                 let dist2 = dx * dx + dy * dy;
-                (dist2 <= r2).then(|| (id.as_str(), st, dist2.sqrt()))
+                (dist2 <= r2).then(|| (id, st, dist2.sqrt()))
             })
             .collect();
         out.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-        out
+        Ok(out)
     }
 
     /// Return the `k` nearest entities to `(x, y)`, sorted by distance ascending.
     /// Entities with no known position are excluded.
-    pub fn nearest_to_point(&self, x: f64, y: f64, k: usize) -> Vec<(&str, &EntityState, f64)> {
+    pub fn nearest_to_point(
+        &self,
+        x: f64,
+        y: f64,
+        k: usize,
+    ) -> Result<Vec<(String, EntityState, f64)>, StoreError> {
         let mut out: Vec<_> = self
             .entities
-            .iter()
+            .all_entities()?
+            .into_iter()
             .filter_map(|(id, st)| {
                 let (ex, ey) = st.position?;
                 let dx = ex - x;
                 let dy = ey - y;
-                Some((id.as_str(), st, (dx * dx + dy * dy).sqrt()))
+                Some((id, st, (dx * dx + dy * dy).sqrt()))
             })
             .collect();
         out.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
         out.truncate(k);
-        out
+        Ok(out)
     }
 
     /// Capture a serializable snapshot of the full engine state.
     ///
     /// The snapshot includes entity state, all registered zones/circles, dwell configs, and
     /// configurable/sequence rule definitions. Pass the result to
-    /// [`Engine::restore_from_snapshot`] (or a [`SnapshotStore`] impl) to persist it.
-    pub fn snapshot(&self) -> EngineSnapshot {
-        EngineSnapshot {
-            entities: self.entities.clone(),
+    /// [`Engine::restore_from_snapshot`] (or a [`SnapshotStore`] impl) to resume.
+    ///
+    /// Returns an error if the backing [`StateStore`] fails to enumerate entities.
+    pub fn snapshot(&self) -> Result<EngineSnapshot, StoreError> {
+        Ok(EngineSnapshot {
+            entities: self.entities.all_entities()?.into_iter().collect(),
             fences: self.spatial.zones().to_vec(),
             circles: self.spatial.circles().to_vec(),
             zone_dwell: self.zone_dwell.clone(),
@@ -628,7 +666,7 @@ impl Engine {
                 .map(SequenceRuleSnapshot::from)
                 .collect(),
             history_size: self.history_size,
-        }
+        })
     }
 
     /// Reconstruct an engine from a previously captured [`EngineSnapshot`].
@@ -636,13 +674,17 @@ impl Engine {
     /// Zone/circle registrations and all entity membership state are restored. The default
     /// spatial rule pipeline is rebuilt deterministically. In-flight sequence progress is not
     /// restored (sequences restart from step 0).
+    ///
+    /// State is loaded into an in-memory store. Use [`Engine::with_store`] after restoring if
+    /// you want to continue with an external backend.
     pub fn restore_from_snapshot(snap: EngineSnapshot) -> Result<Self, EngineError> {
         let spatial = NaiveSpatialIndex::from_vecs(snap.fences, snap.circles)?;
+        let store = MemoryStateStore(snap.entities);
         let mut engine = Self {
             spatial,
             zone_dwell: snap.zone_dwell,
             circle_dwell: snap.circle_dwell,
-            entities: snap.entities,
+            entities: Box::new(store),
             membership_scratch: BTreeSet::new(),
             rules: rules::default_rules(),
             configurable_rules: snap.configurable_rules,
@@ -720,19 +762,8 @@ impl GeoEngine for Engine {
         let t_ms = update.t_ms;
         let entity_id = update.id.clone();
 
-        let Engine {
-            spatial,
-            zone_dwell,
-            circle_dwell,
-            entities,
-            membership_scratch,
-            rules,
-            configurable_rules,
-            sequence_rules,
-            history_size,
-        } = self;
-
-        let st = entities.entry(entity_id.clone()).or_default();
+        // Load owned entity state — default for first-seen entities.
+        let mut st = self.entities.get(&entity_id)?.unwrap_or_default();
 
         // Enforce monotonicity: reject strictly backwards timestamps.
         if let Some(prev) = st.last_t_ms {
@@ -765,8 +796,8 @@ impl GeoEngine for Engine {
         st.heading = heading;
 
         // Append to history ring buffer.
-        if *history_size > 0 {
-            if st.history.len() >= *history_size {
+        if self.history_size > 0 {
+            if st.history.len() >= self.history_size {
                 st.history.pop_front();
             }
             st.history.push_back(HistoryPoint {
@@ -777,20 +808,22 @@ impl GeoEngine for Engine {
         }
 
         // Run spatial rules → raw state events.
+        // Destructure to satisfy the borrow checker: `self.entities` (for write-back later)
+        // must not be mutably borrowed while `self.spatial` etc. are borrowed by the rule context.
         let ctx = rules::RuleContext {
             entity_id: entity_id.as_str(),
             position: p,
             at_ms: t_ms,
-            zone_dwell,
-            circle_dwell,
+            zone_dwell: &self.zone_dwell,
+            circle_dwell: &self.circle_dwell,
         };
         let mut raw: Vec<state::Event> = Vec::new();
-        for rule in rules.iter() {
+        for rule in self.rules.iter() {
             rule.apply(
-                spatial as &dyn SpatialIndex,
+                &self.spatial as &dyn SpatialIndex,
                 &ctx,
-                st,
-                membership_scratch,
+                &mut st,
+                &mut self.membership_scratch,
                 &mut raw,
             );
         }
@@ -800,20 +833,23 @@ impl GeoEngine for Engine {
 
         // Configurable rules (read-only over events so far).
         let mut custom: Vec<Event> = Vec::new();
-        for rule in configurable_rules.iter() {
-            rule.fire(&events, st, entity_id.as_str(), t_ms, &mut custom);
+        for rule in self.configurable_rules.iter() {
+            rule.fire(&events, &st, entity_id.as_str(), t_ms, &mut custom);
         }
         events.extend(custom);
 
         // Sequence rules (mutate per-rule state).
         let mut seq: Vec<Event> = Vec::new();
-        for rule in sequence_rules.iter_mut() {
+        for rule in self.sequence_rules.iter_mut() {
             rule.fire(&events, entity_id.as_str(), t_ms, &mut seq);
         }
         events.extend(seq);
 
         st.position = Some(p);
         st.last_t_ms = Some(t_ms);
+
+        // Write updated state back to the store.
+        self.entities.set(&entity_id, st)?;
 
         Ok(events)
     }
@@ -1442,7 +1478,7 @@ mod tests {
             })
             .unwrap();
         assert!(ev1.is_empty());
-        let st = e.get_entity_state("e1").unwrap();
+        let st = e.get_entity_state("e1").unwrap().unwrap();
         assert!(st.speed.is_none());
         assert!(st.heading.is_none());
 
@@ -1470,7 +1506,7 @@ mod tests {
                 t_ms: 1000,
             })
             .unwrap();
-        let st2 = e2.get_entity_state("e1").unwrap();
+        let st2 = e2.get_entity_state("e1").unwrap().unwrap();
         assert!(st2.speed.is_some());
         assert!(st2.heading.is_some());
         // Enter event should carry speed/heading.
@@ -1496,7 +1532,7 @@ mod tests {
             })
             .unwrap();
         }
-        let st = e.get_entity_state("e1").unwrap();
+        let st = e.get_entity_state("e1").unwrap().unwrap();
         assert_eq!(st.history.len(), 3);
         // Oldest kept should be i=2 (x=2.0).
         assert_eq!(st.history[0].x, 2.0);
@@ -1702,7 +1738,7 @@ mod tests {
         })
         .unwrap();
 
-        let result = e.entities_in_zone("depot");
+        let result = e.entities_in_zone("depot").unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "truck-1");
     }
@@ -1723,13 +1759,13 @@ mod tests {
         })
         .unwrap();
 
-        assert!(e.entities_in_zone("depot").is_empty());
+        assert!(e.entities_in_zone("depot").unwrap().is_empty());
     }
 
     #[test]
     fn entities_in_zone_unknown_zone_returns_empty() {
         let e = Engine::new();
-        assert!(e.entities_in_zone("nonexistent").is_empty());
+        assert!(e.entities_in_zone("nonexistent").unwrap().is_empty());
     }
 
     #[test]
@@ -1750,7 +1786,7 @@ mod tests {
         })
         .unwrap();
 
-        let result = e.entities_in_circle("bay");
+        let result = e.entities_in_circle("bay").unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "van-1");
     }
@@ -1774,7 +1810,7 @@ mod tests {
         })
         .unwrap();
 
-        let result = e.entities_near_point(0.0, 0.0, 10.0);
+        let result = e.entities_near_point(0.0, 0.0, 10.0).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].0, "truck-near");
         assert!((result[0].2 - 1.0).abs() < 1e-9);
@@ -1800,7 +1836,7 @@ mod tests {
         })
         .unwrap();
 
-        let result = e.entities_near_point(0.0, 0.0, 5.0);
+        let result = e.entities_near_point(0.0, 0.0, 5.0).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "near");
     }
@@ -1818,7 +1854,7 @@ mod tests {
             .unwrap();
         }
 
-        let result = e.nearest_to_point(0.0, 0.0, 2);
+        let result = e.nearest_to_point(0.0, 0.0, 2).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].0, "e1");
         assert_eq!(result[1].0, "e2");
@@ -1839,7 +1875,7 @@ mod tests {
         .unwrap();
 
         // k larger than entity count: should return only those with positions.
-        let result = e.nearest_to_point(0.0, 0.0, 100);
+        let result = e.nearest_to_point(0.0, 0.0, 100).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "known");
     }

@@ -86,6 +86,18 @@ napi-build-release: napi-install ## Build the NAPI native module (release)
 napi-typecheck: ## Type-check types.ts against the generated index.d.ts
 	cd geo-stream && npm run typecheck
 
+.PHONY: wasm-install
+wasm-install: ## Add wasm32-wasip1-threads Rust target
+	rustup target add wasm32-wasip1-threads
+
+.PHONY: wasm-build
+wasm-build: napi-install wasm-install ## Build WASM from the NAPI adapter (release)
+	cd geo-stream && npm run build:wasm
+
+.PHONY: wasm-build-debug
+wasm-build-debug: napi-install wasm-install ## Build WASM from the NAPI adapter (debug, faster)
+	cd geo-stream && npm run build:wasm-debug
+
 .PHONY: install-hooks
 install-hooks: ## Install git pre-commit hook (auto-formats with cargo fmt)
 	@cp scripts/hooks/pre-commit .git/hooks/pre-commit

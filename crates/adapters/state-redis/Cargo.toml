@@ -1,0 +1,12 @@
+[package]
+name = "state-redis"
+version.workspace = true
+edition.workspace = true
+description = "Redis-backed StateStore for the geo-events engine"
+
+[dependencies]
+state = { path = "../../state" }
+redis = { version = "0.27", features = ["r2d2"] }
+r2d2 = "0.8"
+serde_json = "1"
+thiserror = "2"

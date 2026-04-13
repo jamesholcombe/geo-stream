@@ -2,6 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, VecDeque};
+use thiserror::Error;
+
+/// Errors returned by [`StateStore`] implementations.
+#[derive(Debug, Error)]
+pub enum StoreError {
+    #[error("serialization: {0}")]
+    Serialization(String),
+    #[error("backend: {0}")]
+    Backend(String),
+}
 
 /// Minimum continuous time inside / outside before emitting enter / exit for a zone.
 ///
@@ -279,13 +289,13 @@ pub fn circle_membership_with_dwell(
 /// state to/from an external system without borrow-checker friction.
 pub trait StateStore: Send {
     /// Return a clone of the stored state for `id`, or `None` if the entity is unknown.
-    fn get(&self, id: &str) -> Option<EntityState>;
+    fn get(&self, id: &str) -> Result<Option<EntityState>, StoreError>;
     /// Insert or overwrite the state for `id`.
-    fn set(&mut self, id: &str, state: EntityState);
+    fn set(&mut self, id: &str, state: EntityState) -> Result<(), StoreError>;
     /// Remove the state entry for `id` if it exists.
-    fn remove(&mut self, id: &str);
+    fn remove(&mut self, id: &str) -> Result<(), StoreError>;
     /// Return a snapshot of all stored entities as owned pairs.
-    fn all_entities(&self) -> Vec<(String, EntityState)>;
+    fn all_entities(&self) -> Result<Vec<(String, EntityState)>, StoreError>;
 }
 
 /// In-memory [`StateStore`] backed by a [`HashMap`]. Zero-overhead default.
@@ -293,20 +303,22 @@ pub trait StateStore: Send {
 pub struct MemoryStateStore(pub HashMap<String, EntityState>);
 
 impl StateStore for MemoryStateStore {
-    fn get(&self, id: &str) -> Option<EntityState> {
-        self.0.get(id).cloned()
+    fn get(&self, id: &str) -> Result<Option<EntityState>, StoreError> {
+        Ok(self.0.get(id).cloned())
     }
 
-    fn set(&mut self, id: &str, state: EntityState) {
+    fn set(&mut self, id: &str, state: EntityState) -> Result<(), StoreError> {
         self.0.insert(id.to_string(), state);
+        Ok(())
     }
 
-    fn remove(&mut self, id: &str) {
+    fn remove(&mut self, id: &str) -> Result<(), StoreError> {
         self.0.remove(id);
+        Ok(())
     }
 
-    fn all_entities(&self) -> Vec<(String, EntityState)> {
-        self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    fn all_entities(&self) -> Result<Vec<(String, EntityState)>, StoreError> {
+        Ok(self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     }
 }
 

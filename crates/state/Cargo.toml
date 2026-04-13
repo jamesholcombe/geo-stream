@@ -6,3 +6,4 @@ description = "Entity geofence membership state and enter/exit events"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+thiserror = "2"

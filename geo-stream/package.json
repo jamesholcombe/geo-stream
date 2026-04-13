@@ -20,6 +20,10 @@
     "./redis": {
       "types": "./dist/redis.d.ts",
       "default": "./dist/redis.js"
+    },
+    "./wasm": {
+      "types": "./dist/wasm.d.ts",
+      "default": "./dist/wasm.js"
     }
   },
   "files": [
@@ -29,7 +33,9 @@
   "scripts": {
     "build": "napi build --platform --release --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src --js native.js --dts native.d.ts",
     "build:debug": "napi build --platform --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src --js native.js --dts native.d.ts",
-    "compile": "tsc && cp src/native.js src/native.d.ts dist/ && (cp src/*.node dist/ 2>/dev/null || true)",
+    "build:wasm": "napi build --platform --release --target wasm32-wasip1-threads --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src/wasm --js native.js --dts native.d.ts",
+    "build:wasm-debug": "napi build --platform --target wasm32-wasip1-threads --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src/wasm --js native.js --dts native.d.ts",
+    "compile": "tsc && cp src/native.js src/native.d.ts dist/ && (cp src/*.node dist/ 2>/dev/null || true) && mkdir -p dist/wasm && (cp src/wasm/native.js src/wasm/native.d.ts dist/wasm/ 2>/dev/null || true) && (cp src/wasm/*.wasm dist/wasm/ 2>/dev/null || true)",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test 'tests/**/*.test.ts'",
     "prepublishOnly": "npm run compile"

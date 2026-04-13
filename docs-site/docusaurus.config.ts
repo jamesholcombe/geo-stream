@@ -55,6 +55,11 @@ const config: Config = {
           label: 'Docs',
         },
         {
+          to: '/demo',
+          position: 'left',
+          label: 'Live Demo',
+        },
+        {
           href: 'https://github.com/jamesholcombe/geo-events',
           label: 'GitHub',
           position: 'right',
