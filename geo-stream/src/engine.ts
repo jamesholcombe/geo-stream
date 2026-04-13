@@ -13,6 +13,18 @@ import type { RuleConfig, SequenceOptions } from "./rules.js";
 export interface EngineOptions {
   /** Max historical position samples kept per entity. Default: 10. */
   historySize?: number;
+  /**
+   * State backend URL. Supports `redis://host:port` and `rediss://host:port` (TLS).
+   *
+   * When set, entity state is stored in Redis so it persists across process restarts
+   * and can be shared across multiple engine instances.
+   *
+   * Requires the native module to be compiled with the `redis-backend` feature flag:
+   * `cargo build --features redis-backend`
+   *
+   * Omit (or leave undefined) to use the default in-process memory store.
+   */
+  backendUrl?: string;
 }
 
 export interface ZoneOptions {
@@ -81,7 +93,12 @@ export class GeoEngine {
   constructor(options?: EngineOptions) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.node = new (GeoEngineNode as any)(
-      options ? { historySize: options.historySize ?? undefined } : undefined,
+      options
+        ? {
+            historySize: options.historySize ?? undefined,
+            backendUrl: options.backendUrl ?? undefined,
+          }
+        : undefined,
     ) as NativeNode;
   }
 

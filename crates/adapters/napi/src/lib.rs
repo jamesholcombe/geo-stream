@@ -1,3 +1,5 @@
+#[cfg(feature = "redis-backend")]
+use engine::StoreError;
 use engine::{
     Circle, CircleDwell, ConfigurableRule, Engine, EngineOptions, EventKind, GeoEngine as _,
     PointUpdate, RuleFilter, RuleTrigger, SequenceRule, Zone, ZoneDwell,
@@ -29,6 +31,10 @@ pub struct DwellOptionsJs {
 pub struct EngineOptionsJs {
     /// Maximum historical position samples per entity. Default: 10.
     pub history_size: Option<i32>,
+    /// Optional state backend URL. Supports `redis://host:port` and `rediss://host:port` (TLS).
+    /// Requires the native module to be built with the `redis-backend` feature.
+    /// When omitted the default in-process memory store is used.
+    pub backend_url: Option<String>,
 }
 
 /// A single trigger condition for a configurable rule.
@@ -302,22 +308,29 @@ pub struct GeoEngineNode {
 
 impl Default for GeoEngineNode {
     fn default() -> Self {
-        Self::new(None)
+        Self {
+            inner: Engine::new(),
+        }
     }
 }
 
 #[napi]
 impl GeoEngineNode {
     #[napi(constructor)]
-    pub fn new(options: Option<EngineOptionsJs>) -> Self {
+    pub fn new(options: Option<EngineOptionsJs>) -> napi::Result<Self> {
+        let backend_url = options
+            .as_ref()
+            .and_then(|o| o.backend_url.clone())
+            .unwrap_or_default();
         let opts = options
             .map(|o| EngineOptions {
                 history_size: o.history_size.unwrap_or(10) as usize,
             })
             .unwrap_or_default();
-        Self {
-            inner: Engine::with_options(opts),
-        }
+
+        let inner = build_engine_inner(&backend_url, opts)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        Ok(Self { inner })
     }
 
     /// Register a named zone from a GeoJSON Polygon object.
@@ -481,6 +494,30 @@ impl GeoEngineNode {
 
 fn engine_err(e: engine::EngineError) -> napi::Error {
     napi::Error::from_reason(e.to_string())
+}
+
+#[cfg(feature = "redis-backend")]
+fn build_engine_inner(backend_url: &str, opts: EngineOptions) -> Result<Engine, StoreError> {
+    if backend_url.starts_with("redis://") || backend_url.starts_with("rediss://") {
+        let store = state_redis::RedisStateStore::new(backend_url, "geo-events")?;
+        Ok(Engine::with_store(store, opts))
+    } else {
+        Ok(Engine::with_options(opts))
+    }
+}
+
+#[cfg(not(feature = "redis-backend"))]
+fn build_engine_inner(
+    backend_url: &str,
+    opts: EngineOptions,
+) -> Result<Engine, engine::StoreError> {
+    if !backend_url.is_empty() {
+        return Err(engine::StoreError::Backend(format!(
+            "backendUrl={backend_url} requires the native module to be built with the \
+             `redis-backend` feature"
+        )));
+    }
+    Ok(Engine::with_options(opts))
 }
 
 fn entity_to_js(id: &str, st: &engine::EntityState) -> Option<EntityStateJs> {

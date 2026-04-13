@@ -57,6 +57,12 @@ export interface DwellOptionsJs {
 export interface EngineOptionsJs {
   /** Maximum historical position samples per entity. Default: 10. */
   historySize?: number;
+  /**
+   * Optional state backend URL. Supports `redis://host:port` and `rediss://host:port` (TLS).
+   * Requires the native module to be built with the `redis-backend` feature.
+   * When omitted the default in-process memory store is used.
+   */
+  backendUrl?: string;
 }
 
 /** Snapshot of current entity state returned from getEntityState / getEntities. */
