@@ -1,0 +1,73 @@
+{
+  "name": "@jamesholcombe/geo-stream-redis",
+  "version": "0.2.2",
+  "description": "Native Node.js bindings for geo-stream with Redis state backend",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./emitter": {
+      "types": "./dist/emitter.d.ts",
+      "default": "./dist/emitter.js"
+    },
+    "./kafka": {
+      "types": "./dist/kafka.d.ts",
+      "default": "./dist/kafka.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "default": "./dist/redis.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "napi build --platform --release --features redis-backend --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src --js native.js --dts native.d.ts",
+    "build:debug": "napi build --platform --features redis-backend --manifest-path ../crates/adapters/napi/Cargo.toml --output-dir src --js native.js --dts native.d.ts",
+    "compile": "tsc && cp src/native.js src/native.d.ts dist/ && (cp src/*.node dist/ 2>/dev/null || true)",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run compile"
+  },
+  "dependencies": {
+    "@types/geojson": "^7946.0.16"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3",
+    "@types/node": "^25.5.0",
+    "typescript": "^5"
+  },
+  "napi": {
+    "binaryName": "geo_events_redis",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamesholcombe/geo-stream"
+  },
+  "keywords": [
+    "geofence",
+    "streaming",
+    "geospatial",
+    "location",
+    "events",
+    "spatial",
+    "napi",
+    "native",
+    "redis"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

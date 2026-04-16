@@ -1,0 +1,14 @@
+{
+  "name": "@jamesholcombe/geo-stream-redis-darwin-arm64",
+  "version": "0.2.2",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "main": "geo_events_redis.darwin-arm64.node",
+  "files": ["geo_events_redis.darwin-arm64.node"],
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamesholcombe/geo-stream"
+  }
+}

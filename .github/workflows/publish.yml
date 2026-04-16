@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── 1. Build one .node binary per platform ─────────────────────────────────
+  # ── 1a. Build one .node binary per platform (standard, memory backend) ──────
   build:
     name: Build (${{ matrix.target }})
     strategy:
@@ -66,10 +66,62 @@ jobs:
           path: geo-stream/src/*.node
           if-no-files-found: error
 
-  # ── 2. Collect all binaries, publish to npm, and create GitHub release ─────
+  # ── 1b. Build one .node binary per platform (redis backend) ─────────────────
+  build-redis:
+    name: Build Redis (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-14
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          # Separate cache key so redis and standard builds don't evict each other.
+          key: redis
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install JS deps
+        run: npm ci
+        working-directory: geo-stream-redis
+
+      - name: Build native module (redis backend)
+        run: npm run build -- --target ${{ matrix.target }}
+        working-directory: geo-stream-redis
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-redis-${{ matrix.target }}
+          path: geo-stream-redis/src/*.node
+          if-no-files-found: error
+
+  # ── 2. Collect all binaries, publish both packages to npm ───────────────────
   publish:
     name: Publish
-    needs: build
+    needs: [build, build-redis]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -82,38 +134,70 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install JS deps
+      - name: Install JS deps (standard)
         run: npm ci
         working-directory: geo-stream
 
-      # Download all per-platform artifacts into geo-stream/artifacts/
+      - name: Install JS deps (redis)
+        run: npm ci
+        working-directory: geo-stream-redis
+
+      # Download all standard artifacts into geo-stream/artifacts/
       - uses: actions/download-artifact@v4
         with:
+          pattern: bindings-*
           path: geo-stream/artifacts
+          merge-multiple: false
+
+      # Download all redis artifacts into geo-stream-redis/artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bindings-redis-*
+          path: geo-stream-redis/artifacts
+          merge-multiple: false
 
       # napi artifacts copies each *.node into the committed npm/<platform>/ stubs.
-      # The npm/ platform directories and their package.json files are committed;
-      # only the *.node binaries are gitignored and populated here at publish time.
-      - name: Organise artifacts
+      - name: Organise artifacts (standard)
         run: npx napi artifacts --build-output-dir artifacts
         working-directory: geo-stream
 
-      # napi pre-publish: updates version in each npm/<platform>/package.json,
-      # injects optionalDependencies into the root package.json, and publishes
-      # each platform package to npm.
-      - name: Pre-publish (platform packages)
+      - name: Organise artifacts (redis)
+        run: npx napi artifacts --build-output-dir artifacts
+        working-directory: geo-stream-redis
+
+      # Publish redis platform packages first (standard package has no dependency on them).
+      - name: Pre-publish (redis platform packages)
+        run: npx napi pre-publish -t npm --no-gh-release
+        working-directory: geo-stream-redis
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish standard platform packages.
+      - name: Pre-publish (standard platform packages)
         run: npx napi pre-publish -t npm --no-gh-release
         working-directory: geo-stream
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Compile types.ts → types.js + types.d.ts
-      - name: Compile TypeScript
+      # Compile TypeScript for both packages.
+      - name: Compile TypeScript (standard)
         run: npx tsc
         working-directory: geo-stream
 
-      # Publish the root package last (depends on platform packages being live)
+      - name: Compile TypeScript (redis)
+        run: npx tsc
+        working-directory: geo-stream-redis
+
+      # Publish redis root package.
+      - name: Publish redis root package
+        run: npm publish --access public
+        working-directory: geo-stream-redis
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Publish standard root package last.
       - name: Publish root package
         run: npm publish --access public
         working-directory: geo-stream

@@ -86,6 +86,22 @@ napi-build-release: napi-install ## Build the NAPI native module (release)
 napi-typecheck: ## Type-check types.ts against the generated index.d.ts
 	cd geo-stream && npm run typecheck
 
+.PHONY: napi-redis-install
+napi-redis-install: ## Install npm dependencies for the Redis NAPI adapter
+	cd geo-stream-redis && npm install
+
+.PHONY: napi-redis-build
+napi-redis-build: napi-redis-install ## Build the Redis NAPI native module (debug)
+	cd geo-stream-redis && npm run build:debug
+
+.PHONY: napi-redis-build-release
+napi-redis-build-release: napi-redis-install ## Build the Redis NAPI native module (release)
+	cd geo-stream-redis && npm run build
+
+.PHONY: napi-redis-typecheck
+napi-redis-typecheck: ## Type-check the redis package TypeScript
+	cd geo-stream-redis && npm run typecheck
+
 .PHONY: wasm-install
 wasm-install: ## Add wasm32-wasip1-threads Rust target
 	rustup target add wasm32-wasip1-threads
